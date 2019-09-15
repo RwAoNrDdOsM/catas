@@ -4,25 +4,13 @@ local mod = get_mod("catas")
 DifficultySettings.cataclysm_2.display_image = "difficulty_option_6"
 DifficultySettings.cataclysm_3.display_image = "difficulty_option_6"
 
--- Stops crash by displaying the not the right map frame
-mod:hook_origin(ActPresentationUI, "_setup_level", function (self, act_key, played_level_key, previous_difficulty_index_completed)
-	local widgets_by_name = self._widgets_by_name
-	local statistics_db = self.statistics_db
-	local stats_id = self.stats_id
-	local level_stat = statistics_db:get_persistent_stat(stats_id, "completed_levels", played_level_key) or 0
-	local level_completed = level_stat ~= 0
-	local difficulty_complete_index = (level_completed and LevelUnlockUtils.completed_level_difficulty_index(statistics_db, stats_id, played_level_key)) or 0
+mod:hook(LevelUnlockUtils, "completed_level_difficulty_index", function (func, statistics_db, player_stats_id, level_key)
+	local difficulty_complete_index = func(statistics_db, player_stats_id, level_key)
 	if difficulty_complete_index > 5 then -- Cata 2 & 3 are rank 7 & 8 respectivley. This makes sure it return the Legend rank
-		difficulty_complete_index = 5
+		return 5
+	else
+		return difficulty_complete_index
 	end
-	local first_time_completed = previous_difficulty_index_completed < difficulty_complete_index
-	local widget_name = "level"
-	local widget = widgets_by_name[widget_name]
-	local content = widget.content
-	local style = widget.style
-	content.locked = first_time_completed or not level_completed
-
-	return first_time_completed, difficulty_complete_index
 end)
 
 -- 900 Hero Power
@@ -92,9 +80,28 @@ DifficultyMapping = {
 	cataclysm_3 = "cataclysm_3",
 }
 
+mod:hook(DifficultyManager, "get_difficulty_rank", function (func, self, check)
+	local result = func(self)
+	if result > 6 and check then
+		return 6
+	else
+		return result
+	end
+end)
+
+mod:hook(DifficultyManager, "get_difficulty", function (func, self, check)
+	local result = func(self)
+	if result == "cataclysm_2" or result == "cataclysm_3" then
+		return "cataclysm"
+	else
+		return result
+	end
+	return self.difficulty
+end)
+
 -- Proper spawning for events (Need to see if there is way to modify these functions without using hook_origin so it's more compatible)
 local function disable_elements_with_lower_difficulty(elements)
-	local current_difficulty = Managers.state.difficulty:get_difficulty_rank()
+	local current_difficulty = Managers.state.difficulty:get_difficulty_rank(true)
 	local num_elements = #elements
 
 	for i = 1, num_elements, 1 do
@@ -107,9 +114,6 @@ local function disable_elements_with_lower_difficulty(elements)
 				element.disabled = nil
 			end
         elseif element.only_on_difficulty then
-            if current_difficulty > DifficultySettings.cataclysm.rank then -- Unlike above this will not work so I put it at the rank of Cata 1
-                current_difficulty = DifficultySettings.cataclysm.rank 
-            end
 			if current_difficulty ~= element.only_on_difficulty then
 				element.disabled = true
 			elseif element.disabled then
@@ -161,10 +165,7 @@ mod:hook_origin(TerrorEventMixer.run_functions, "spawn_special", function (event
     local conflict_director = Managers.state.conflict
 
     if num_to_spawn_scaled then
-        local current_difficulty = Managers.state.difficulty:get_difficulty()
-        if current_difficulty == "cataclysm_2" or current_difficulty == "cataclysm_3" then --As there is no Cata 2 and Cata 3 scaled spawning, this just makes the Cata 1 scaled spawning
-            current_difficulty = "cataclysm"
-        end
+        local current_difficulty = Managers.state.difficulty:get_difficulty(true)
         local chosen_amount = num_to_spawn_scaled[current_difficulty]
         chosen_amount = chosen_amount or num_to_spawn_scaled.hardest
 
@@ -201,10 +202,7 @@ mod:hook_origin(TerrorEventMixer.run_functions, "spawn_weave_special_event", fun
     local conflict_director = Managers.state.conflict
 
     if num_to_spawn_scaled then
-        local current_difficulty = Managers.state.difficulty:get_difficulty()
-        if current_difficulty == "cataclysm_2" or current_difficulty == "cataclysm_3" then  --As there is no Cata 2 and Cata 3 scaled spawning, this just makes the Cata 1 scaled spawning
-            current_difficulty = "cataclysm"
-        end
+        local current_difficulty = Managers.state.difficulty:get_difficulty(true)
         local chosen_amount = num_to_spawn_scaled[current_difficulty]
         chosen_amount = chosen_amount or num_to_spawn_scaled.hardest
 
@@ -275,10 +273,7 @@ mod:hook_origin(TerrorEventMixer.run_functions, "spawn_patrol", function (event,
 		end
 
 		local spline_start_position = nil
-		local difficulty = Managers.state.difficulty:get_difficulty()
-		if difficulty == "cataclysm_2" or difficulty == "cataclysm_3" then --As there is no Cata 2 and Cata 3 scaled spawning, this just makes the Cata 1 scaled spawning
-            difficulty = "cataclysm"
-        end
+		local difficulty = Managers.state.difficulty:get_difficulty(true)
 		local formation = PatrolFormationSettings[formation_name][difficulty]
 		local despawn_at_end = data.one_directional
 		formation.settings = PatrolFormationSettings[formation_name].settings
@@ -313,10 +308,7 @@ mod:hook_origin(TerrorEventMixer.run_functions, "set_time_challenge", function (
 	local time_challenge_name = element.time_challenge_name
 	local challenge_threshold = QuestSettings[time_challenge_name]
 	local duration = t + challenge_threshold
-	local current_difficulty = Managers.state.difficulty:get_difficulty()
-	if current_difficulty == "cataclysm_2" or current_difficulty == "cataclysm_3" then --As there is no Cata 2 and Cata 3 scaled spawning, this just makes the Cata 1 scaled spawning
-		current_difficulty = "cataclysm"
-	end
+	local current_difficulty = Managers.state.difficulty:get_difficulty(true)
 	local allowed_difficulties = QuestSettings.allowed_difficulties[time_challenge_name]
 	local allowed_difficulty = allowed_difficulties[current_difficulty]
 
@@ -333,10 +325,7 @@ mod:hook_origin(TerrorEventMixer.run_functions, "do_volume_challenge", function 
 	local challenge_name = element.challenge_name
 	local challenge_duration = QuestSettings[challenge_name]
 	local allowed_difficulties = QuestSettings.allowed_difficulties[challenge_name]
-	local difficulty = Managers.state.difficulty:get_difficulty()
-	if difficulty == "cataclysm_2" or difficulty == "cataclysm_3" then --As there is no Cata 2 and Cata 3 scaled spawning, this just makes the Cata 1 scaled spawning
-		difficulty = "cataclysm"
-	end
+	local difficulty = Managers.state.difficulty:get_difficulty(true)
 	local on_allowed_difficulty = allowed_difficulties[difficulty]
 	local terminate = not on_allowed_difficulty
 	optional_data[volume_name] = {
