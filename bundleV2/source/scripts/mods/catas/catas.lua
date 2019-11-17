@@ -13,7 +13,7 @@ mod:hook(LevelUnlockUtils, "completed_level_difficulty_index", function (func, s
 	end
 end)
 
--- 900 Hero Power
+-- 900 Hero Power (will be removed if Sanctioned)
 local function magic_level_to_power_level(magic_level)
     local settings = PowerLevelFromMagicLevel
 
@@ -133,7 +133,7 @@ mod:hook_origin(TerrorEventMixer, "start_event", function (event_name, data)
 	local level_key = level_transition_handler:get_current_level_keys()
 	local elements = TerrorEventBlueprints[level_key][event_name] or GenericTerrorEvents[event_name]
 
-	fassert(elements, "No terror event called '%s', exists. Make sure it is added to level %s terror event file if its supposed to be there.", event_name, level_key)
+	--fassert(elements, "No terror event called '%s', exists. Make sure it is added to level %s terror event file if its supposed to be there.", event_name, level_key)
 	print("TerrorEventMixer.start_event:", event_name)
 	disable_elements_with_lower_difficulty(elements)
 
@@ -259,7 +259,11 @@ mod:hook_origin(TerrorEventMixer.run_functions, "spawn_patrol", function (event,
 		local random_index = (num_formations > 1 and math.random(num_formations)) or 1
 		local formation_name = formations[random_index]
 
-		assert(PatrolFormationSettings[formation_name], "No such formation exists in PatrolFormationSettings")
+		--assert(PatrolFormationSettings[formation_name], "No such formation exists in PatrolFormationSettings")
+		if PatrolFormationSettings[formation_name] == nil then
+			mod:echo("No such formation exists in PatrolFormationSettings")
+			return
+		end
 
 		local spline_name = nil
 		local splines = element.splines
@@ -320,7 +324,11 @@ mod:hook_origin(TerrorEventMixer.run_functions, "do_volume_challenge", function 
 	local optional_data = TerrorEventMixer.optional_data
 	local volume_name = element.volume_name
 
-	fassert(optional_data[volume_name] == nil, "Already started a volume challenge for volume_name=(%s)", volume_name)
+	--fassert(optional_data[volume_name] == nil, "Already started a volume challenge for volume_name=(%s)", volume_name)
+	if optional_data[volume_name] ~= nil then
+		mod:echo("Already started a volume challenge for volume_name=(%s)", volume_name)
+		return
+	end
 
 	local challenge_name = element.challenge_name
 	local challenge_duration = QuestSettings[challenge_name]
@@ -1046,3 +1054,701 @@ mod:hook_origin(StartGameWindowDifficulty, "_setup_difficulties", function (self
 
 	self._difficulty_widgets = difficulty_widgets
 end)
+
+-- Stagger Bonus Damage alterations (Stagger Number Override is currently not changeable) (All multiplier numbers can't be higher than their set values)
+DifficultySettings.normal.stagger_damage_multiplier_ranged = 0.2
+DifficultySettings.normal.stagger_number_override = 1
+DifficultySettings.hard.stagger_damage_multiplier_ranged = 0.2
+DifficultySettings.hard.stagger_number_override = 1
+DifficultySettings.harder.stagger_damage_multiplier_ranged = 0.2
+DifficultySettings.harder.stagger_number_override = 1
+DifficultySettings.hardest.stagger_damage_multiplier_ranged = 0.2
+DifficultySettings.hardest.stagger_number_override = 1
+DifficultySettings.cataclysm.stagger_damage_multiplier_ranged = 0.2
+DifficultySettings.cataclysm.stagger_number_override = 1
+DifficultySettings.cataclysm_2.stagger_damage_multiplier_ranged = 0.3
+DifficultySettings.cataclysm_2.stagger_number_override = 1
+DifficultySettings.cataclysm_3.stagger_damage_multiplier_ranged = 0.5
+DifficultySettings.cataclysm_3.stagger_number_override = 1
+
+--Damage Utils Stuff
+local BLACKBOARDS = BLACKBOARDS
+local PLAYER_TARGET_ARMOR = 4
+local unit_get_data = Unit.get_data
+local function do_damage_calculation(attacker_unit, damage_source, original_power_level, damage_output, hit_zone_name, damage_profile, target_index, boost_curve, boost_damage_multiplier, is_critical_strike, backstab_multiplier, breed, is_dummy, dummy_unit_armor, dropoff_scalar, static_base_damage, is_player_friendly_fire, has_power_boost, difficulty_level, target_unit_armor, target_unit_primary_armor, has_crit_head_shot_killing_blow_perk, has_crit_backstab_killing_blow_perk, target_max_health)
+	if damage_profile and damage_profile.no_damage then
+		return 0
+	end
+
+	local difficulty_settings = DifficultySettings[difficulty_level]
+	local power_boost_damage = 0
+	local head_shot_boost_damage = 0
+	local head_shot_min_damage = 1
+	local power_boost_min_damage = 1
+	local multiplier_type = DamageUtils.get_breed_damage_multiplier_type(breed, hit_zone_name, is_dummy)
+	local is_finesse_hit = multiplier_type == "headshot" or multiplier_type == "weakspot" or multiplier_type == "protected_weakspot"
+
+	if is_finesse_hit or is_critical_strike or has_power_boost or (boost_damage_multiplier and boost_damage_multiplier > 0) then
+		local power_boost_armor = nil
+
+		if target_unit_armor == 2 or target_unit_armor == 5 or target_unit_armor == 6 then
+			power_boost_armor = 1
+		else
+			power_boost_armor = target_unit_armor
+		end
+
+		local power_boost_target_damages = damage_output[power_boost_armor] or (power_boost_armor == 0 and 0) or damage_output[1]
+		local preliminary_boost_damage = nil
+
+		if type(power_boost_target_damages) == "table" then
+			local power_boost_damage_range = power_boost_target_damages.max - power_boost_target_damages.min
+			local power_boost_attack_power, _ = ActionUtils.get_power_level_for_target(original_power_level, damage_profile, target_index, is_critical_strike, attacker_unit, hit_zone_name, power_boost_armor, damage_source, breed, dummy_unit_armor, dropoff_scalar, difficulty_level, target_unit_armor, target_unit_primary_armor)
+			local power_boost_percentage = ActionUtils.get_power_level_percentage(power_boost_attack_power)
+			preliminary_boost_damage = power_boost_target_damages.min + power_boost_damage_range * power_boost_percentage
+		else
+			preliminary_boost_damage = power_boost_target_damages
+		end
+
+		if is_finesse_hit then
+			head_shot_min_damage = preliminary_boost_damage * 0.5
+		end
+
+		if is_critical_strike then
+			head_shot_min_damage = preliminary_boost_damage * 0.5
+		end
+
+		if has_power_boost or (boost_damage_multiplier and boost_damage_multiplier > 0) then
+			power_boost_damage = preliminary_boost_damage
+		end
+	end
+
+	local damage, target_damages = nil
+	target_damages = (static_base_damage and ((type(damage_output) == "table" and damage_output[1]) or damage_output)) or damage_output[target_unit_armor] or (target_unit_armor == 0 and 0) or damage_output[1]
+
+	if type(target_damages) == "table" then
+		local damage_range = target_damages.max - target_damages.min
+		local percentage = 0
+
+		if damage_profile then
+			local attack_power, _ = ActionUtils.get_power_level_for_target(original_power_level, damage_profile, target_index, is_critical_strike, attacker_unit, hit_zone_name, nil, damage_source, breed, dummy_unit_armor, dropoff_scalar, difficulty_level, target_unit_armor, target_unit_primary_armor)
+			percentage = ActionUtils.get_power_level_percentage(attack_power)
+		end
+
+		damage = target_damages.min + damage_range * percentage
+	else
+		damage = target_damages
+	end
+
+	local backstab_damage = nil
+
+	if backstab_multiplier then
+		backstab_damage = (power_boost_damage and damage < power_boost_damage and power_boost_damage * (backstab_multiplier - 1)) or damage * (backstab_multiplier - 1)
+	end
+
+	if not static_base_damage then
+		local power_boost_amount = 0
+		local head_shot_boost_amount = 0
+
+		if has_power_boost then
+			if target_unit_armor == 1 then
+				power_boost_amount = power_boost_amount + 0.75
+			elseif target_unit_armor == 2 then
+				power_boost_amount = power_boost_amount + 0.6
+			elseif target_unit_armor == 3 then
+				power_boost_amount = power_boost_amount + 0.5
+			elseif target_unit_armor == 4 then
+				power_boost_amount = power_boost_amount + 0.5
+			elseif target_unit_armor == 5 then
+				power_boost_amount = power_boost_amount + 0.5
+			elseif target_unit_armor == 6 then
+				power_boost_amount = power_boost_amount + 0.3
+			else
+				power_boost_amount = power_boost_amount + 0.5
+			end
+		end
+
+		if boost_damage_multiplier and boost_damage_multiplier > 0 then
+			if target_unit_armor == 1 then
+				power_boost_amount = power_boost_amount + 0.75
+			elseif target_unit_armor == 2 then
+				power_boost_amount = power_boost_amount + 0.3
+			elseif target_unit_armor == 3 then
+				power_boost_amount = power_boost_amount + 0.75
+			elseif target_unit_armor == 4 then
+				power_boost_amount = power_boost_amount + 0.5
+			elseif target_unit_armor == 5 then
+				power_boost_amount = power_boost_amount + 0.5
+			elseif target_unit_armor == 6 then
+				power_boost_amount = power_boost_amount + 0.2
+			else
+				power_boost_amount = power_boost_amount + 0.5
+			end
+		end
+
+		local target_settings = damage_profile and ((damage_profile.targets and damage_profile.targets[target_index]) or damage_profile.default_target)
+
+		if is_finesse_hit then
+			if damage > 0 then
+				if target_unit_armor == 3 then
+					head_shot_boost_amount = head_shot_boost_amount + ((target_settings and (target_settings.headshot_boost_boss or target_settings.headshot_boost)) or 0.25)
+				else
+					head_shot_boost_amount = head_shot_boost_amount + ((target_settings and target_settings.headshot_boost) or 0.5)
+				end
+			elseif target_unit_primary_armor == 6 and damage == 0 then
+				head_shot_boost_amount = head_shot_boost_amount + (target_settings and (target_settings.headshot_boost_heavy_armor or 0.25))
+			elseif target_unit_armor == 2 and damage == 0 then
+				head_shot_boost_amount = head_shot_boost_amount + ((target_settings and (target_settings.headshot_boost_armor or target_settings.headshot_boost)) or 0.5)
+			end
+
+			if multiplier_type == "protected_weakspot" then
+				head_shot_boost_amount = head_shot_boost_amount * 0.25
+			end
+		end
+
+		if multiplier_type == "protected_spot" then
+			power_boost_amount = power_boost_amount - 0.5
+			head_shot_boost_amount = head_shot_boost_amount - 0.5
+		end
+
+		if damage_profile and damage_profile.no_headshot_boost then
+			head_shot_boost_amount = 0
+		end
+
+		local crit_boost = 0
+
+		if is_critical_strike then
+			crit_boost = damage_profile.crit_boost or 0.5
+
+			if damage_profile.no_crit_boost then
+				crit_boost = 0
+			end
+		end
+
+		if boost_curve and (power_boost_amount > 0 or head_shot_boost_amount > 0 or crit_boost > 0) then
+			local modified_boost_curve, modified_boost_curve_head_shot = nil
+			local boost_coefficient = (target_settings and target_settings.boost_curve_coefficient) or DefaultBoostCurveCoefficient
+			local boost_coefficient_headshot = (target_settings and target_settings.boost_curve_coefficient_headshot) or DefaultBoostCurveCoefficient
+
+			if boost_damage_multiplier and boost_damage_multiplier > 0 then
+				if breed and breed.boost_curve_multiplier_override then
+					boost_damage_multiplier = math.clamp(boost_damage_multiplier, 0, breed.boost_curve_multiplier_override)
+				end
+
+				boost_coefficient = boost_coefficient * boost_damage_multiplier
+				boost_coefficient_headshot = boost_coefficient_headshot * boost_damage_multiplier
+			end
+
+			if power_boost_amount > 0 then
+				modified_boost_curve = DamageUtils.get_modified_boost_curve(boost_curve, boost_coefficient)
+				power_boost_amount = math.clamp(power_boost_amount, 0, 1)
+				local boost_multiplier = DamageUtils.get_boost_curve_multiplier(modified_boost_curve or boost_curve, power_boost_amount)
+				power_boost_damage = math.max(math.max(power_boost_damage, damage), power_boost_min_damage) * boost_multiplier
+			end
+
+			if head_shot_boost_amount > 0 or crit_boost > 0 then
+				local attacker_buff_extension = attacker_unit and ScriptUnit.has_extension(attacker_unit, "buff_system")
+				modified_boost_curve_head_shot = DamageUtils.get_modified_boost_curve(boost_curve, boost_coefficient_headshot)
+				head_shot_boost_amount = math.clamp(head_shot_boost_amount + crit_boost, 0, 1)
+				local head_shot_boost_multiplier = DamageUtils.get_boost_curve_multiplier(modified_boost_curve_head_shot or boost_curve, head_shot_boost_amount)
+				head_shot_boost_damage = math.max(math.max(power_boost_damage, damage), head_shot_min_damage) * head_shot_boost_multiplier
+
+				if attacker_buff_extension and is_critical_strike then
+					head_shot_boost_damage = head_shot_boost_damage * attacker_buff_extension:apply_buffs_to_value(1, "critical_strike_effectiveness")
+				end
+
+				if attacker_buff_extension and is_finesse_hit then
+					head_shot_boost_damage = head_shot_boost_damage * attacker_buff_extension:apply_buffs_to_value(1, "headshot_multiplier")
+				end
+			end
+		end
+
+		if breed and breed.armored_boss_damage_reduction then
+			damage = damage * 0.8
+			power_boost_damage = power_boost_damage * 0.5
+			backstab_damage = backstab_damage and backstab_damage * 0.75
+		end
+
+		if breed and breed.boss_damage_reduction then
+			damage = damage * 0.45
+			power_boost_damage = power_boost_damage * 0.5
+			head_shot_boost_damage = head_shot_boost_damage * 0.5
+			backstab_damage = backstab_damage and backstab_damage * 0.75
+		end
+
+		if breed and breed.lord_damage_reduction then
+			damage = damage * 0.2
+			power_boost_damage = power_boost_damage * 0.25
+			head_shot_boost_damage = head_shot_boost_damage * 0.25
+			backstab_damage = backstab_damage and backstab_damage * 0.5
+		end
+
+		damage = damage + power_boost_damage + head_shot_boost_damage
+
+		if backstab_damage then
+			damage = damage + backstab_damage
+		end
+
+		if is_critical_strike then
+			local killing_blow_triggered = nil
+
+			if hit_zone_name == "head" and has_crit_head_shot_killing_blow_perk then
+				killing_blow_triggered = true
+			elseif backstab_multiplier and backstab_multiplier > 1 and has_crit_backstab_killing_blow_perk then
+				killing_blow_triggered = true
+			end
+
+			if killing_blow_triggered and breed then
+				local boss = breed.boss
+				local primary_armor = breed.primary_armor_category
+
+				if not boss and not primary_armor then
+					if target_max_health then
+						damage = target_max_health
+					else
+						local breed_health_table = breed.max_health
+						local difficulty_rank = difficulty_settings.rank
+						local breed_health = breed_health_table[difficulty_rank]
+						damage = breed_health
+					end
+				end
+			end
+		end
+	end
+
+	if is_player_friendly_fire then
+		local friendly_fire_multiplier = difficulty_settings.friendly_fire_multiplier
+
+		if friendly_fire_multiplier then
+			damage = damage * friendly_fire_multiplier
+		end
+	end
+
+	local heavy_armor_damage = false
+
+	return damage, heavy_armor_damage
+end
+local function apply_buffs_to_stagger_damage(attacker_unit, target_unit, target_index, hit_zone, is_critical_strike, stagger_number)
+	local attacker_buff_extension = ScriptUnit.has_extension(attacker_unit, "buff_system")
+	local new_stagger_number = stagger_number
+
+	if attacker_buff_extension then
+		local finesse_perk = attacker_buff_extension:has_buff_perk("finesse_stagger_damage")
+		local smiter_perk = attacker_buff_extension:has_buff_perk("smiter_stagger_damage")
+		local mainstay_perk = attacker_buff_extension:has_buff_perk("linesman_stagger_damage")
+
+		if mainstay_perk and new_stagger_number > 0 then
+			new_stagger_number = new_stagger_number + 1
+		elseif (is_critical_strike or hit_zone == "head" or hit_zone == "neck") and finesse_perk then
+			new_stagger_number = 2
+		elseif smiter_perk then
+			if target_index and target_index <= 1 then
+				new_stagger_number = math.max(1, new_stagger_number)
+			else
+				new_stagger_number = 0
+			end
+		end
+	end
+
+	return new_stagger_number
+end
+mod:hook(DamageUtils, "calculate_damage", function (func, damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source)
+	local difficulty_settings = Managers.state.difficulty:get_difficulty_settings()
+	local breed, dummy_unit_armor, is_dummy, unit_max_health = nil
+
+	if target_unit then
+		breed = AiUtils.unit_breed(target_unit)
+		dummy_unit_armor = unit_get_data(target_unit, "armor")
+		is_dummy = unit_get_data(target_unit, "is_dummy")
+		local target_unit_health_extension = ScriptUnit.has_extension(target_unit, "health_system")
+		local is_invincible = target_unit_health_extension and target_unit_health_extension:get_is_invincible() and not is_dummy
+
+		if is_invincible then
+			return 0
+		end
+
+		if target_unit_health_extension and not is_dummy then
+			unit_max_health = target_unit_health_extension:get_max_health()
+		elseif breed then
+			local breed_health_table = breed.max_health
+			local difficulty_rank = difficulty_settings.rank
+			local breed_health = breed_health_table[difficulty_rank]
+			unit_max_health = breed_health
+		end
+	end
+
+	local attacker_breed = nil
+
+	if attacker_unit then
+		attacker_breed = Unit.get_data(attacker_unit, "breed")
+	end
+
+	local static_base_damage = not attacker_breed or not attacker_breed.is_hero
+	local is_player_friendly_fire = not static_base_damage and Managers.state.side:is_player_friendly_fire(attacker_unit, target_unit)
+	local target_is_hero = breed and breed.is_hero
+	local dropoff_scalar = 0
+
+	if damage_profile and not static_base_damage then
+		local target_settings = (damage_profile.targets and damage_profile.targets[target_index]) or damage_profile.default_target
+		dropoff_scalar = ActionUtils.get_dropoff_scalar(damage_profile, target_settings, attacker_unit, target_unit)
+	end
+
+	local buff_extension = attacker_unit and ScriptUnit.has_extension(attacker_unit, "buff_system")
+	local has_power_boost = false
+	local has_crit_head_shot_killing_blow_perk = false
+	local has_crit_backstab_killing_blow_perk = false
+
+	if buff_extension then
+		has_power_boost = buff_extension:has_buff_type("armor penetration")
+		has_crit_head_shot_killing_blow_perk = buff_extension:has_buff_perk("crit_headshot_killing_blow")
+		has_crit_backstab_killing_blow_perk = buff_extension:has_buff_perk("crit_backstab_killing_blow")
+	end
+
+	local difficulty_level = Managers.state.difficulty:get_difficulty()
+	local target_unit_armor, target_unit_primary_armor, _ = nil
+
+	if target_is_hero then
+		target_unit_armor = PLAYER_TARGET_ARMOR
+	else
+		target_unit_armor, _, target_unit_primary_armor, _ = ActionUtils.get_target_armor(hit_zone_name, breed, dummy_unit_armor)
+	end
+
+	local calculated_damage = do_damage_calculation(attacker_unit, damage_source, original_power_level, damage_output, hit_zone_name, damage_profile, target_index, boost_curve, boost_damage_multiplier, is_critical_strike, backstab_multiplier, breed, is_dummy, dummy_unit_armor, dropoff_scalar, static_base_damage, is_player_friendly_fire, has_power_boost, difficulty_level, target_unit_armor, target_unit_primary_armor, has_crit_head_shot_killing_blow_perk, has_crit_backstab_killing_blow_perk, unit_max_health)
+
+	if damage_profile and not damage_profile.is_dot then
+		local blackboard = BLACKBOARDS[target_unit]
+		local stagger_number = 0
+
+		if blackboard then
+			local ignore_stagger_damage_reduction = damage_profile.no_stagger_damage_reduction or breed.no_stagger_damage_reduction
+			local min_stagger_number = 0
+			local max_stagger_number = 2
+
+			if blackboard.is_climbing then
+				stagger_number = 2
+			else
+				stagger_number = math.min(blackboard.stagger or min_stagger_number, max_stagger_number)
+			end
+
+			if damage_profile.no_stagger_damage_reduction_ranged then
+				local stagger_number_override = difficulty_settings.stagger_number_override or 1
+				stagger_number = math.max(stagger_number_override, stagger_number)
+			end
+
+			if not damage_profile.no_stagger_damage_reduction_ranged then
+				stagger_number = apply_buffs_to_stagger_damage(attacker_unit, target_unit, target_index, hit_zone_name, is_critical_strike, stagger_number)
+			end
+		elseif dummy_unit_armor then
+			local target_buff_extension = ScriptUnit.has_extension(target_unit, "buff_system")
+			stagger_number = target_buff_extension:apply_buffs_to_value(0, "dummy_stagger")
+
+			if damage_profile.no_stagger_damage_reduction_ranged then
+				local stagger_number_override = difficulty_settings.stagger_number_override or 1
+				stagger_number = math.max(stagger_number_override, stagger_number)
+			end
+
+			if not damage_profile.no_stagger_damage_reduction_ranged then
+				stagger_number = apply_buffs_to_stagger_damage(attacker_unit, target_unit, target_index, hit_zone_name, is_critical_strike, stagger_number)
+			end
+		end
+
+		local min_stagger_damage_coefficient = difficulty_settings.min_stagger_damage_coefficient
+		local stagger_damage_multiplier = difficulty_settings.stagger_damage_multiplier
+		local stagger_damage_multiplier_ranged = difficulty_settings.stagger_damage_multiplier_ranged -- Added a ranged mutliplier
+
+		if stagger_damage_multiplier then
+			local bonus_damage_percentage = 0
+			if damage_profile.no_stagger_damage_reduction_ranged and mod:get("stagger_ranged") then -- Implemented ranged multiplier
+				bonus_damage_percentage = stagger_number * stagger_damage_multiplier_ranged
+			else
+				bonus_damage_percentage = stagger_number * stagger_damage_multiplier
+			end
+			local target_buff_extension = ScriptUnit.has_extension(target_unit, "buff_system")
+
+			if target_buff_extension then
+				bonus_damage_percentage = target_buff_extension:apply_buffs_to_value(bonus_damage_percentage, "unbalanced_damage_taken")
+			end
+
+			local stagger_damage = calculated_damage * (min_stagger_damage_coefficient + bonus_damage_percentage)
+			calculated_damage = stagger_damage
+		end
+	else -- if no stagger bonus is added, then use original fucntion (need to figure out as better way... Possibly use a function for this Fatshark?)
+		return func(damage_output, target_unit, attacker_unit, hit_zone_name, original_power_level, boost_curve, boost_damage_multiplier, is_critical_strike, damage_profile, target_index, backstab_multiplier, damage_source)
+	end
+
+	local weave_manager = Managers.weave
+
+	if target_is_hero and static_base_damage and weave_manager:get_active_weave() then
+		local scaling_value = weave_manager:get_scaling_value("enemy_damage")
+		calculated_damage = calculated_damage * (1 + scaling_value)
+	end
+
+	return calculated_damage
+end)
+
+-- Settings Implementation
+
+-- Breed Tweaks Things
+local health_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2.2,
+	3.3,
+	4.5,
+	6,
+	7.5
+}
+local stagger_step_multipliers = {
+	1,
+	0.85,
+	1.4,
+	2.25,
+	2.25,
+	2.25,
+	3.5,
+	3.5
+}
+local elite_stagger_step_multipliers = {
+	1,
+	1,
+	1.7,
+	2.75,
+	2.75,
+	2.75,
+	3.5,
+	3.5
+}
+local mass_step_multipliers = {
+	1,
+	1,
+	1.7,
+	2.5,
+	2.5,
+	2.5,
+	3.25,
+	4.5
+}
+local elite_health_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2.2,
+	3.3,
+	5.4,
+	6.4,
+	7.4
+}
+local elite_stagger_step_multipliers = {
+	1,
+	1,
+	1.7,
+	2.75,
+	2.75,
+	2.75,
+	3.5,
+	4
+}
+local elite_mass_step_multipliers = {
+	1,
+	1,
+	1.7,
+	2.5,
+	2.5,
+	2.5,
+	3.25,
+	4.5
+}
+local horde_health_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2.2,
+	3.3,
+	4.2,
+	5.1,
+	6
+}
+local horde_stagger_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2.25,
+	2.25,
+	2.25,
+	3,
+	3
+}
+local horde_mass_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2,
+	2,
+	2,
+	2.75,
+	3
+}
+local boss_health_step_multipliers = {
+	1,
+	1,
+	1.5,
+	2,
+	3,
+	5,
+	6.5,
+	8
+}
+
+local function networkify_health(health_amount)
+	health_amount = math.clamp(health_amount, 0, 8191.5)
+	local decimal = health_amount % 1
+	local rounded_decimal = math.round(decimal * 4) * 0.25
+
+	return math.floor(health_amount) + rounded_decimal
+end
+
+local function health_steps(value, step_multipliers)
+	local value_steps = {}
+
+	for i = 1, 8, 1 do
+		local step_value = value * step_multipliers[i]
+		local networkifyed_health = networkify_health(step_value)
+		value_steps[i] = networkifyed_health
+	end
+
+	return value_steps
+end
+
+local function steps(value, step_multipliers)
+	local value_steps = {}
+
+	for i = 1, 8, 1 do
+		local raw_value = value * step_multipliers[i]
+		local decimal = raw_value % 1
+		local rounded_decimal = math.round(decimal * 4) * 0.25
+		value_steps[i] = math.floor(raw_value) + rounded_decimal
+	end
+
+	return value_steps
+end
+
+local widget_settings = {
+	["diff_stagger_resist.slave_rat"] = function()
+		BreedTweaks.diff_stagger_resist.slave_rat = steps(1 * (mod:get("diff_stagger_resist.slave_rat") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.fanatic"] = function()
+		BreedTweaks.diff_stagger_resist.fanatic = steps(1.4 * (mod:get("diff_stagger_resist.fanatic") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.ungor"] = function()
+		BreedTweaks.diff_stagger_resist.ungor = steps(1.3 * (mod:get("diff_stagger_resist.ungor") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.clan_rat"] = function()
+		BreedTweaks.diff_stagger_resist.clan_rat = steps(2.1 * (mod:get("diff_stagger_resist.clan_rat") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.gor"] = function()
+		BreedTweaks.diff_stagger_resist.gor = steps(2.4 * (mod:get("diff_stagger_resist.gor") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.marauder"] = function()
+		BreedTweaks.diff_stagger_resist.marauder = steps(2.65 * (mod:get("diff_stagger_resist.marauder") or 1), stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.stormvermin"] = function()
+		BreedTweaks.diff_stagger_resist.stormvermin = steps(2.25 * (mod:get("diff_stagger_resist.stormvermin") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.bestigor"] = function()
+		BreedTweaks.diff_stagger_resist.bestigor = steps(3.25 * (mod:get("diff_stagger_resist.bestigor") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.raider"] = function()
+		BreedTweaks.diff_stagger_resist.raider = steps(3 * (mod:get("diff_stagger_resist.raider") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.warrior"] = function()
+		BreedTweaks.diff_stagger_resist.warrior = steps(4.8 * (mod:get("diff_stagger_resist.warrior") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.berzerker"] = function()
+		BreedTweaks.diff_stagger_resist.berzerker = steps(2.7 * (mod:get("diff_stagger_resist.berzerker") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.plague_monk"] = function()
+		BreedTweaks.diff_stagger_resist.plague_monk = steps(3 * (mod:get("diff_stagger_resist.plague_monk") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.packmaster"] = function()
+		BreedTweaks.diff_stagger_resist.packmaster = steps(4 * (mod:get("diff_stagger_resist.packmaster") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.ratling_gunner"] = function()
+		BreedTweaks.diff_stagger_resist.ratling_gunner = steps(2.5 * (mod:get("diff_stagger_resist.ratling_gunner") or 1), elite_stagger_step_multipliers)
+	end,
+	["diff_stagger_resist.sorcerer"] = function()
+		BreedTweaks.diff_stagger_resist.sorcerer = steps(2.7 * (mod:get("diff_stagger_resist.sorcerer") or 1), elite_stagger_step_multipliers)
+	end,
+	["normal.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.normal.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 20) /100
+	end,
+	["hard.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.hard.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 20) /100
+	end,
+	["harder.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.harder.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 20) /100
+	end,
+	["hardest.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.hardest.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 20) /100
+	end,
+	["cataclysm.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.cataclysm.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 20) /100
+	end,
+	["cataclysm_2.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.cataclysm_2.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 30) /100
+	end,
+	["cataclysm_3.stagger_damage_multiplier_ranged"] = function ()
+		DifficultySettings.cataclysm_3.stagger_damage_multiplier_ranged = (mod:get("normal.stagger_damage_multiplier_ranged") or 50) /100
+	end,
+	["normal.stagger_damage_multiplier"] = function ()
+		DifficultySettings.normal.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 20) /100
+	end,
+	["hard.stagger_damage_multiplier"] = function ()
+		DifficultySettings.hard.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 20) /100
+	end,
+	["harder.stagger_damage_multiplier"] = function ()
+		DifficultySettings.harder.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 20) /100
+	end,
+	["hardest.stagger_damage_multiplier"] = function ()
+		DifficultySettings.hardest.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 20) /100
+	end,
+	["cataclysm.stagger_damage_multiplier"] = function ()
+		DifficultySettings.cataclysm.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 20) /100
+	end,
+	["cataclysm_2.stagger_damage_multiplier"] = function ()
+		DifficultySettings.cataclysm_2.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 30) /100
+	end,
+	["cataclysm_3.stagger_damage_multiplier"] = function ()
+		DifficultySettings.cataclysm_3.stagger_damage_multiplier = (mod:get("normal.stagger_damage_multiplier") or 50) /100
+	end,
+}
+
+local function type_widget_setting(widget_setting, setting_id)
+	if type(widget_setting) == "table" then
+		if #widget_setting > 0 then
+			for i=1, #widget_setting do
+				local setting = widget_setting[i]
+				type_widget_setting(setting)
+			end
+		else
+			for widget, _widget in pairs(widget_setting) do
+				type_widget_setting(widget_setting[widget])
+			end
+		end
+	elseif type(widget_setting) == "string" then
+		mod:pcall(function()
+			widget_setting = mod:get(setting_id)
+			return
+		end)
+	elseif type(widget_setting) == "function" then
+		mod:pcall(function()
+			widget_setting()
+		end)
+	end
+end
+
+mod.on_setting_changed = function(setting_id)
+	if widget_settings[setting_id] then
+		local widget_setting = widget_settings[setting_id]
+		type_widget_setting(widget_setting, setting_id)
+	end
+end
