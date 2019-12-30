@@ -17,6 +17,12 @@ return {
 	percent = {
 		en = "%%"
 	},
+	custom = {
+		en = "Custom"
+	},
+	["dw-lite"] = {
+		en = "Deathwish Lite"
+	},
 	stats_description = {
 		en = "This contains alot of stats to help highten the Skill Cieling. More options will be added as they are found/needed."
 	},
@@ -26,109 +32,103 @@ return {
 	diff_stagger_resist_description = {
 		en = "Options in here multiply the stagger resistance for all difficulties, depending on the chosen unit.\nDefault for all is 1"
 	},
-	stagger = {
-		en = "Stagger Damage Bonus"
-	},
-	stagger_description = {
-		en = "Options in here are for the stagger damage bonus. The percent values in here are for enemies with a stagger value of 1, simply double it for the max damag bonus."
-	},
-	stagger_melee = {
-		en = "Melee/Ranged Stagger"
-	},
-	stagger_melee_description = {
-		en = "Stagger percents for Melee and Ranged. If Ranged Stagger is enabled, then just Melee Stagger."
-	},
-	stagger_ranged = {
-		en = "Ranged Stagger"
-	},
-	stagger_ranged_description = {
-		en = "Stagger percents for Ranged. Must be enables to work."
-	},
-	["diff_stagger_resist.slave_rat"] = {
+	["diff_stagger_resist.skaven_slave"] = {
 		en = "Slave Rat"
 	},
-	["diff_stagger_resist.fanatic"] = {
-		en = "Fanatic"
-	},
-	["diff_stagger_resist.ungor"] = {
-		en = "Ungor/Ungor Archers"
-	},
-	["diff_stagger_resist.clan_rat"] = {
+	["diff_stagger_resist.skaven_clan_rat"] = {
 		en = "Clan Rat"
 	},
-	["diff_stagger_resist.gor"] = {
-		en = "Gor/Standard Bearer"
-	},
-	["diff_stagger_resist.marauder"] = {
-		en = "Marauder"
-	},
-	["diff_stagger_resist.stormvermin"] = {
+	["diff_stagger_resist.skaven_storm_vermin"] = {
 		en = "Stormvermin"
 	},
-	["diff_stagger_resist.bestigor"] = {
-		en = "Bestigor"
+	["diff_stagger_resist.skaven_storm_vermin_commander"] = {
+		en = "Stormvermin Commander"
 	},
-	["diff_stagger_resist.raider"] = {
-		en = "Raider"
+	["diff_stagger_resist.skaven_plague_monk"] = {
+		en = "Plauge Monk"
 	},
-	["diff_stagger_resist.warrior"] = {
+	["diff_stagger_resist.skaven_pack_master"] = {
+		en = "Pack Master"
+	},
+	["diff_stagger_resist.skaven_ratling_gunner"] = {
+		en = "Ratling Gunner"
+	},
+	["diff_stagger_resist.skaven_warpfire_thrower"] = {
+		en = "Warpfire Thrower"
+	},
+	["diff_stagger_resist.skaven_storm_vermin_warlord"] = {
+		en = "Skarrik Spinemanglr"
+	},
+	["diff_stagger_resist.chaos_fanatic"] = {
+		en = "Fanatic"
+	},
+	["diff_stagger_resist.chaos_marauder"] = {
+		en = "Raider/Bulwark (Marauder)"
+	},
+	["diff_stagger_resist.chaos_raider"] = {
+		en = "Mauler (Raider)"
+	},
+	["diff_stagger_resist.chaos_berzerker"] = {
+		en = "Savage (Berzerker)"
+	},
+	["diff_stagger_resist.chaos_warrior"] = {
 		en = "Chaos Warrior"
 	},
-	["diff_stagger_resist.berzerker"] = {
-		en = "Berzerker"
+	["diff_stagger_resist.chaos_sorcerers"] = {
+		en = "Chaos Sorcerers"
 	},
-	["diff_stagger_resist.plague_monk"] = {
-		en = "Plague Monk"
+	["diff_stagger_resist.beastmen_ungor"] = {
+		en = "Ungor"
 	},
-	["diff_stagger_resist.packmaster"] = {
-		en = "Packmaster"
+	["diff_stagger_resist.beastmen_ungor_archer"] = {
+		en = "Ungor Archer"
 	},
-	["diff_stagger_resist.ratling_gunner"] = {
-		en = "Ratling Gunner/Warpfire Thrower"
+	["diff_stagger_resist.beastmen_gor"] = {
+		en = "Gor"
 	},
-	["diff_stagger_resist.sorcerer"] = {
-		en = "Choas Sorcerer Specials"
+	["diff_stagger_resist.beastmen_bestigor"] = {
+		en = "Bestigor"
+	},
+	["diff_stagger_resist.beastmen_standard_bearer"] = {
+		en = "Wargor (Standard Bearer)"
+	},
+	stagger = {
+		en = "Stagger Damage Multiplier"
 	},
 	["normal.stagger_damage_multiplier"] = {
-		en = "Recruit"
-	},
-	["normal.stagger_damage_multiplier_ranged"] = {
 		en = "Recruit"
 	},
 	["hard.stagger_damage_multiplier"] = {
 		en = "Veteran"
 	},
-	["hard.stagger_damage_multiplier_ranged"] = {
-		en = "Veteran"
-	},
 	["harder.stagger_damage_multiplier"] = {
-		en = "Champion"
-	},
-	["harder.stagger_damage_multiplier_ranged"] = {
 		en = "Champion"
 	},
 	["hardest.stagger_damage_multiplier"] = {
 		en = "Legend"
 	},
-	["hardest.stagger_damage_multiplier_ranged"] = {
-		en = "Legend"
-	},
 	["cataclysm.stagger_damage_multiplier"] = {
-		en = "Cataclysm"
-	},
-	["cataclysm.stagger_damage_multiplier_ranged"] = {
 		en = "Cataclysm"
 	},
 	["cataclysm_2.stagger_damage_multiplier"] = {
 		en = "Cataclysm 2"
 	},
-	["cataclysm_2.stagger_damage_multiplier_ranged"] = {
-		en = "Cataclysm 2"
-	},
 	["cataclysm_3.stagger_damage_multiplier"] = {
 		en = "Cataclysm 3"
 	},
-	["cataclysm_3.stagger_damage_multiplier_ranged"] = {
-		en = "Cataclysm 3"
+	skaven_poison_wind_globadier_poison = {
+		en = "Globadier Posion"
+	},
+	["skaven_poison_wind_globadier.throw_poison_globe_init_damage"] = {
+		en = "Thrown Initial Damage"
+	},
+	["skaven_poison_wind_globadier.throw_poison_globe_dot"] = {
+		en = "Thrown Dot Damage"
+	},
+	["skaven_poison_wind_globadier.suicide_run_init_damage"] = {
+		en = "Suicide Run Initial Damage"
+	},
+	["skaven_poison_wind_globadier.suicide_run_dot"] = {
+		en = "Suicide Run Dot Damage"
 	},
 }
