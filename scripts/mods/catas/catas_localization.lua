@@ -1,16 +1,8 @@
 return {
 	mod_description = {
 		en = "Enables Cataclysm 2 and Cataclysm 3 for Adventure Maps."
-		.."\nAdds Deathwish. (Values determined by the VT2 Endgame Community)"
+		.."\nAdds Deathwish. (Values determined by the VT2 Endgame Community (Discord link in steam mod page description))"
 		.."\nFixes Halescourge and Rasknitt attacks for Cataclysm."
-	},
-	deathwish = {
-		en = "Deathwish"
-	},
-	deathwish_description = {
-		en = "VT2 Endgame Community made Deathwish. Discord Link on steam page mod description."
-		.."\nNo affliliation with Grimalackt."
-		.."\n\nToggle Deathwish. Must be host and in the keep."
 	},
 	default = {
 		en = "Default"

@@ -7,11 +7,6 @@ return {
 	options = {
 		widgets = {
 			{
-				setting_id    = "deathwish",
-				type          = "checkbox",
-				default_value = false,
-			},
-			{
 				setting_id  = "burby",
 				type          = "dropdown",
 				default_value = "legend",
