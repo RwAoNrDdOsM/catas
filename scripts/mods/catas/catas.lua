@@ -1085,7 +1085,6 @@ mutator.toggle = function()
 		mod:echo("You must be in the keep to do that!")
 		return
 	end
-
 	if not mutator.active then
 		if not Managers.player.is_server then
 			mod:echo("You must be the host to activate this.")
@@ -1093,9 +1092,11 @@ mutator.toggle = function()
 		end
 		mutator.start()
 		mod:chat_broadcast("Deathwish ENABLED.")
+		mod:echo("Deathwish ENABLED.")
 	else
 		mutator.stop()
 		mod:chat_broadcast("Deathwish DISABLED.")
+		mod:echo("Deathwish DISABLED.")
 	end
 end
 
