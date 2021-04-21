@@ -14,6 +14,15 @@ mod:hook(LevelUnlockUtils, "completed_level_difficulty_index", function (func, s
 	end
 end)
 
+mod:hook(LevelUnlockUtils, "completed_journey_difficulty_index", function (func, statistics_db, player_stats_id, journey_name)
+	local difficulty_index = func(statistics_db, player_stats_id, journey_name)
+	if difficulty_index > 5 then -- Cata 2 & 3 are rank 7 & 8 respectivley. This makes sure it return the Legend rank
+		return 5
+	else
+		return difficulty_index
+	end
+end)
+
 -- Cata 2&3 option
 DefaultDifficulties = {
 	"normal",
@@ -34,17 +43,199 @@ DifficultyMapping = {
 	cataclysm_3 = "cataclysm_3",
 }
 
+-- Chaos Wastes
+
+-- Stupidness
+local function readonlytable(table)
+	return setmetatable(table, {})
+end
+
+readonlytable(DeusStarterWeaponPowerLevels)
+readonlytable(DeusDropPowerlevelRanges)
+
+GameModeSettings.deus.difficulties = DefaultDifficulties
+DeusStarterWeaponPowerLevels.cataclysm_2 = DeusStarterWeaponPowerLevels.cataclysm
+DeusStarterWeaponPowerLevels.cataclysm_3 = DeusStarterWeaponPowerLevels.cataclysm
+DeusDropPowerlevelRanges.cataclysm_2 = DeusDropPowerlevelRanges.cataclysm
+DeusDropPowerlevelRanges.cataclysm_3 = DeusDropPowerlevelRanges.cataclysm
+
+local mutator = require("scripts/settings/mutators/mutator_curse_corrupted_flesh")
+local difficulty_data = {
+	normal = {
+		mark_chance = 0.3,
+		max_marked_enemies = 2
+	},
+	hard = {
+		mark_chance = 0.3,
+		max_marked_enemies = 3
+	},
+	harder = {
+		mark_chance = 0.3,
+		max_marked_enemies = 3
+	},
+	hardest = {
+		mark_chance = 0.3,
+		max_marked_enemies = 3
+	},
+	cataclysm = {
+		mark_chance = 0.3,
+		max_marked_enemies = 3
+	},
+}
+mutator.server_start_function = function (context, data)
+	local difficulty = Managers.state.difficulty:get_difficulty()
+	if difficulty == "cataclysm_2" or difficulty == "cataclysm_3" then
+		difficulty = "cataclysm"
+	end
+	data.max_marked_enemies = difficulty_data[difficulty].max_marked_enemies
+	data.mark_chance = difficulty_data[difficulty].mark_chance
+	data.enemies_to_be_marked = {}
+	data.marked_enemies = {}
+	data.seed = Managers.mechanism:get_level_seed("mutator")
+end
+local mutator = require("scripts/settings/mutators/mutator_curse_greed_pinata")
+local difficulty_data = {
+	normal = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	},
+	hard = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	},
+	harder = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	},
+	hardest = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	},
+	cataclysm = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	}
+}
+mutator.server_start_function = function (context, data)
+	local difficulty = Managers.state.difficulty:get_difficulty()
+	if difficulty == "cataclysm_2" or difficulty == "cataclysm_3" then
+		difficulty = "cataclysm"
+	end
+	data.max_marked_enemies = difficulty_data[difficulty].max_marked_enemies
+	data.mark_chance = difficulty_data[difficulty].mark_chance
+	data.enemies_to_be_marked = {}
+	data.marked_enemies = {}
+	data.seed = Managers.mechanism:get_level_seed("mutator")
+end
+local mutator = require("scripts/settings/mutators/mutator_curse_khorne_champions")
+local difficulty_data = {
+	normal = {
+		mark_chance = 1,
+		max_marked_enemies = 2
+	},
+	hard = {
+		mark_chance = 1,
+		max_marked_enemies = 3
+	},
+	harder = {
+		mark_chance = 1,
+		max_marked_enemies = 4
+	},
+	hardest = {
+		mark_chance = 1,
+		max_marked_enemies = 5
+	},
+	cataclysm = {
+		mark_chance = 1,
+		max_marked_enemies = 6
+	}
+}
+mutator.server_start_function = function (context, data)
+	local difficulty = Managers.state.difficulty:get_difficulty()
+	if difficulty == "cataclysm_2" or difficulty == "cataclysm_3" then
+		difficulty = "cataclysm"
+	end
+	data.max_marked_enemies = difficulty_data[difficulty].max_marked_enemies
+	data.mark_chance = difficulty_data[difficulty].mark_chance
+	data.enemies_to_be_marked = {}
+	data.marked_enemies = {}
+	data.seed = Managers.mechanism:get_level_seed("mutator")
+end
+
+local base_skulking_sorcerer = require("scripts/settings/mutators/mutator_skulking_sorcerer")
+local curse_skulking_sorcerer = require("scripts/settings/mutators/mutator_curse_skulking_sorcerer")
+local NORMAL = 2
+local HARD = 3
+local HARDER = 4
+local HARDEST = 5
+local CATACLYSM = 6
+local CATACLYSM_2 = 6
+local CATACLYSM_3 = 7
+local VERSUS_BASE = 8
+local RESPAWN_TIME = {
+	[NORMAL] = 30,
+	[HARD] = 30,
+	[HARDER] = 30,
+	[HARDEST] = 30,
+	[CATACLYSM] = 30,
+	[VERSUS_BASE] = 30
+}
+local MAX_HEALTH = {
+	[NORMAL] = 20,
+	[HARD] = 30,
+	[HARDER] = 44,
+	[HARDEST] = 66,
+	[CATACLYSM] = 90,
+	[CATACLYSM_2] = 120,
+	[CATACLYSM_3] = 150,
+	[VERSUS_BASE] = 150,
+}
+curse_skulking_sorcerer.server_initialize_function = function (context, data)
+	MutatorUtils.store_breed_and_action_settings(context, data)
+
+	Breeds.curse_mutator_sorcerer.max_health = MAX_HEALTH
+end
+
+curse_skulking_sorcerer.server_start_function = function (context, data)
+	base_skulking_sorcerer.server_start_function(context, data)
+
+	local difficulty_rank = Managers.state.difficulty:get_difficulty_rank()
+	local respawn_time = RESPAWN_TIME[difficulty_rank] or RESPAWN_TIME[NORMAL]
+	data.respawn_times = {
+		respawn_time,
+		respawn_time + 1
+	}
+	data.breed_name = "curse_mutator_sorcerer"
+end
+
+
+
 -- Cata 1 patrols for Cata 2/3
 PatrolFormationSettings.chaos_warrior_default.cataclysm_2 = PatrolFormationSettings.chaos_warrior_default.cataclysm
 PatrolFormationSettings.storm_vermin_two_column.cataclysm_2 = PatrolFormationSettings.storm_vermin_two_column.cataclysm
 PatrolFormationSettings.storm_vermin_shields_infront.cataclysm_2 = PatrolFormationSettings.storm_vermin_shields_infront.cataclysm
+PatrolFormationSettings.small_stormvermins.cataclysm_2 = PatrolFormationSettings.small_stormvermins.cataclysm
+PatrolFormationSettings.small_stormvermins_long.cataclysm_2 = PatrolFormationSettings.small_stormvermins_long.cataclysm
+PatrolFormationSettings.medium_stormvermins.cataclysm_2 = PatrolFormationSettings.medium_stormvermins.cataclysm
+PatrolFormationSettings.medium_stormvermins_wide.cataclysm_2 = PatrolFormationSettings.medium_stormvermins_wide.cataclysm
+PatrolFormationSettings.chaos_warrior_small.cataclysm_2 = PatrolFormationSettings.chaos_warrior_small.cataclysm
+PatrolFormationSettings.chaos_warrior_long.cataclysm_2 = PatrolFormationSettings.chaos_warrior_long.cataclysm
+PatrolFormationSettings.chaos_warrior_wide.cataclysm_2 = PatrolFormationSettings.chaos_warrior_wide.cataclysm
 PatrolFormationSettings.beastmen_standard.cataclysm_2 = PatrolFormationSettings.beastmen_standard.cataclysm
-PatrolFormationSettings.beastmen_archers.cataclysm_2 = PatrolFormationSettings.beastmen_standard.cataclysm
+PatrolFormationSettings.beastmen_archers.cataclysm_2 = PatrolFormationSettings.beastmen_archers.cataclysm
+
 PatrolFormationSettings.chaos_warrior_default.cataclysm_3 = PatrolFormationSettings.chaos_warrior_default.cataclysm
 PatrolFormationSettings.storm_vermin_two_column.cataclysm_3 = PatrolFormationSettings.storm_vermin_two_column.cataclysm
 PatrolFormationSettings.storm_vermin_shields_infront.cataclysm_3 = PatrolFormationSettings.storm_vermin_shields_infront.cataclysm
+PatrolFormationSettings.small_stormvermins.cataclysm_3 = PatrolFormationSettings.small_stormvermins.cataclysm
+PatrolFormationSettings.small_stormvermins_long.cataclysm_3 = PatrolFormationSettings.small_stormvermins_long.cataclysm
+PatrolFormationSettings.medium_stormvermins.cataclysm_3 = PatrolFormationSettings.medium_stormvermins.cataclysm
+PatrolFormationSettings.medium_stormvermins_wide.cataclysm_3 = PatrolFormationSettings.medium_stormvermins_wide.cataclysm
+PatrolFormationSettings.chaos_warrior_small.cataclysm_3 = PatrolFormationSettings.chaos_warrior_small.cataclysm
+PatrolFormationSettings.chaos_warrior_long.cataclysm_3 = PatrolFormationSettings.chaos_warrior_long.cataclysm
+PatrolFormationSettings.chaos_warrior_wide.cataclysm_2 = PatrolFormationSettings.chaos_warrior_wide.cataclysm
 PatrolFormationSettings.beastmen_standard.cataclysm_3 = PatrolFormationSettings.beastmen_standard.cataclysm
-PatrolFormationSettings.beastmen_archers.cataclysm_3 = PatrolFormationSettings.beastmen_standard.cataclysm
+PatrolFormationSettings.beastmen_archers.cataclysm_3 = PatrolFormationSettings.beastmen_archers.cataclysm
 
 -- Lists Cata 1-3 with proper spacing (Again I need to see if there is way to modify these functions without using hook_origin so it's more compatible)
 local start_game_window_difficulty_definitions = local_require("scripts/ui/views/start_game_view/windows/definitions/start_game_window_difficulty_definitions")
@@ -760,6 +951,13 @@ end)
 local difficulty_start = 5 - 1 --Just change Legend and up values
 local difficulties = 8 - difficulty_start --How many times to do
 
+if mutator.data_saved then
+	if not mutator.reset1 then
+		mutator.data_saved = false
+		mutator.reset1 = true
+	end
+end
+
 --Saving Original Values
 if not mutator.data_saved then
 	mutator.Breeds = table.clone(Breeds)
@@ -871,6 +1069,10 @@ mutator.start = function()
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i] = 30
+	end
+	for i=1, difficulties do 
+		local i = i + difficulty_start
+		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = 30
 	end
 	for i=1, difficulties do 
 		local i = i + difficulty_start
@@ -1023,6 +1225,10 @@ mutator.stop = function()
 	end
 	for i=1, difficulties do 
 		local i = i + difficulty_start
+		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = mutator.Breeds.curse_mutator_sorcerer.diff_stagger_resist[i]
+	end
+	for i=1, difficulties do 
+		local i = i + difficulty_start
 		Breeds.chaos_plague_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_plague_sorcerer.diff_stagger_resist[i]
 	end
 	for i=1, difficulties do 
@@ -1082,9 +1288,15 @@ end
 
 mutator.toggle = function()
 	if Managers.state.game_mode == nil or (Managers.state.game_mode._game_mode_key ~= "inn" and Managers.player.is_server) then
-		mod:echo("You must be in the keep to do that!")
-		return
+		if (Managers.state.game_mode._game_mode_key ~= "inn_deus" and Managers.player.is_server) then
+			mod:echo("You must be in the Taal's Horn Keep or Pilgrimage Chamber to do that!")
+			return
+		end
 	end
+	if Managers.matchmaking:_matchmaking_status() ~= "idle" then
+        mod:echo("You must cancel matchmaking before toggling this.")
+        return
+    end
 	if not mutator.active then
 		if not Managers.player.is_server then
 			mod:echo("You must be the host to activate this.")
@@ -1092,15 +1304,13 @@ mutator.toggle = function()
 		end
 		mutator.start()
 		mod:chat_broadcast("Deathwish ENABLED.")
-		mod:echo("Deathwish ENABLED.")
 	else
 		mutator.stop()
 		mod:chat_broadcast("Deathwish DISABLED.")
-		mod:echo("Deathwish DISABLED.")
 	end
 end
 
-mod:command("deathwish", "Toggle Deathwish. Must be host and in the keep.", function() mutator.toggle() end)
+mod:command("deathwish", "Toggle Deathwish. Must be host and in the Taal's Horn Keep or Pilgrimage Chamber.", function() mutator.toggle() end)
 
 --Easy way to change stuff when settings change
 --Table that contains functions, strings or tables to do things when options are changed
