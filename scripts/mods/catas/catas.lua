@@ -1,7 +1,7 @@
 local mod = get_mod("catas")
 local mutator = mod:persistent_table("catas")
 
--- Display cata dispaly images for cata 2 & 3
+-- Display cata displayy images for cata 2 & 3
 DifficultySettings.cataclysm_2.display_image = "difficulty_option_6"
 DifficultySettings.cataclysm_3.display_image = "difficulty_option_6"
 
@@ -21,6 +21,47 @@ mod:hook(LevelUnlockUtils, "completed_journey_difficulty_index", function (func,
 	else
 		return difficulty_index
 	end
+end)
+
+-- Modify Save Data to avoid crash in official
+mod:hook(PopupManager, "query_result", function (func, self, popup_id)
+	local result, params = func(self, popup_id)
+	if result == "end_game" then
+		Managers.save:auto_save(SaveFileName, SaveData, nil, nil, true)
+	end
+
+	return result, params
+end)
+mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callback, force_local_save, exit_game)
+	if exit_game then
+		local id = (rawget(_G, "Steam") and Steam.user_id()) or "local_save"
+		local _player_data = data.player_data
+		local _player_id = _player_data[id]
+		local _mission_selection = _player_id.mission_selection
+		if _mission_selection.custom.difficulty_key == "cataclysm_2" or  _mission_selection.custom.difficulty_key == "cataclysm_3" then
+			_mission_selection.custom.difficulty_key = "cataclysm"
+			mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+		end
+		if _mission_selection.deus_custom.difficulty_key == "cataclysm_2" or  _mission_selection.deus_custom.difficulty_key == "cataclysm_3" then
+			_mission_selection.deus_custom.difficulty_key = "cataclysm"
+			mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+		end
+		if _mission_selection.twitch.difficulty_key == "cataclysm_2" or  _mission_selection.twitch.difficulty_key == "cataclysm_3" then
+			_mission_selection.twitch.difficulty_key = "cataclysm"
+			mod:info("Changed twitch mission selection difficulty key to cataclysm")
+		end
+		if _mission_selection.adventure.difficulty_key == "cataclysm_2" or  _mission_selection.adventure.difficulty_key == "cataclysm_3" then
+			_mission_selection.adventure.difficulty_key = "cataclysm"
+			mod:info("Changed adventure mission selection difficulty key to cataclysm")
+		end
+		if _mission_selection.event.difficulty_key == "cataclysm_2" or  _mission_selection.event.difficulty_key == "cataclysm_3" then
+			_mission_selection.event.difficulty_key = "cataclysm"
+			mod:info("Changed event mission selection difficulty key to cataclysm")
+		end
+		
+	end
+
+	return func(self, file_name, data, callback, force_local_save)
 end)
 
 -- Cata 2&3 option
