@@ -1,0 +1,11 @@
+mod = [
+	"catas"
+]
+
+package = [
+	"resource_packages/catas/catas"
+]
+
+lua = [
+	"scripts/mods/catas/*"
+]
