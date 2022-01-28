@@ -1,5 +1,7 @@
 local mod = get_mod("catas")
-local mutator = mod:persistent_table("catas")
+
+-- Fix Throw Poision Globe
+BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[8] = 10
 
 -- Display cata displayy images for cata 2 & 3
 DifficultySettings.cataclysm_2.display_image = "difficulty_option_6"
@@ -38,21 +40,29 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 		local _player_data = data.player_data
 		local _player_id = _player_data[id]
 		local _mission_selection = _player_id.mission_selection
-		if _mission_selection.custom.difficulty_key == "cataclysm_2" or  _mission_selection.custom.difficulty_key == "cataclysm_3" then
-			_mission_selection.custom.difficulty_key = "cataclysm"
-			mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+		if _mission_selection.custom ~= nil then
+			if _mission_selection.custom.difficulty_key == "cataclysm_2" or  _mission_selection.custom.difficulty_key == "cataclysm_3" then
+				_mission_selection.custom.difficulty_key = "cataclysm"
+				mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+			end
 		end
-		if _mission_selection.deus_custom.difficulty_key == "cataclysm_2" or  _mission_selection.deus_custom.difficulty_key == "cataclysm_3" then
-			_mission_selection.deus_custom.difficulty_key = "cataclysm"
-			mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+		if _mission_selection.deus_custom ~= nil then
+			if _mission_selection.deus_custom.difficulty_key == "cataclysm_2" or  _mission_selection.deus_custom.difficulty_key == "cataclysm_3" then
+				_mission_selection.deus_custom.difficulty_key = "cataclysm"
+				mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+			end
 		end
-		if _mission_selection.twitch.difficulty_key == "cataclysm_2" or  _mission_selection.twitch.difficulty_key == "cataclysm_3" then
-			_mission_selection.twitch.difficulty_key = "cataclysm"
-			mod:info("Changed twitch mission selection difficulty key to cataclysm")
+		if _mission_selection.twitch ~= nil then
+			if _mission_selection.twitch.difficulty_key == "cataclysm_2" or  _mission_selection.twitch.difficulty_key == "cataclysm_3" then
+				_mission_selection.twitch.difficulty_key = "cataclysm"
+				mod:info("Changed twitch mission selection difficulty key to cataclysm")
+			end
 		end
-		if _mission_selection.adventure.difficulty_key == "cataclysm_2" or  _mission_selection.adventure.difficulty_key == "cataclysm_3" then
-			_mission_selection.adventure.difficulty_key = "cataclysm"
-			mod:info("Changed adventure mission selection difficulty key to cataclysm")
+		if _mission_selection.adventure ~= nil then
+			if _mission_selection.adventure.difficulty_key == "cataclysm_2" or  _mission_selection.adventure.difficulty_key == "cataclysm_3" then
+				_mission_selection.adventure.difficulty_key = "cataclysm"
+				mod:info("Changed adventure mission selection difficulty key to cataclysm")
+			end
 		end
 		if _mission_selection.event ~= nil then
 			if _mission_selection.event.difficulty_key == "cataclysm_2" or  _mission_selection.event.difficulty_key == "cataclysm_3" then
@@ -1036,6 +1046,7 @@ mod:hook_origin(StartGameWindowDifficulty, "_setup_difficulties", function (self
 end)
 
 -- Deathwish
+local mutator = mod:persistent_table("catas")
 local difficulty_start = 5 - 1 --Just change Legend and up values
 local difficulties = 8 - difficulty_start --How many times to do
 
@@ -1209,19 +1220,19 @@ mutator.start = function()
 	--skaven_poison_wind_globadier.suicide_run.aoe_dot_damage 15
 	for i=1, difficulties do 
 		local i = i + difficulty_start
-		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage[i] = 15
+		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[i] = 15
 	end
 	for i=1, difficulties do 
 		local i = i + difficulty_start
-		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[i] = 22.5
+		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage[i] = 22.5
 	end
 	for i=1, difficulties do 
 		local i = i + difficulty_start
-		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_dot_damage[i] = 60
+		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_init_damage[i] = 60
 	end
 	for i=1, difficulties do 
 		local i = i + difficulty_start
-		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_init_damage[i] = 15
+		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_dot_damage[i] = 15
 	end
 
 	mutator.active = true
