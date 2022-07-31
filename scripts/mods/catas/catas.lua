@@ -1050,6 +1050,8 @@ local mutator = mod:persistent_table("catas")
 local difficulty_start = 5 - 1 --Just change Legend and up values
 local difficulties = 8 - difficulty_start --How many times to do
 
+local dutch_spice_present = get_mod("DutchSpice")
+
 if mutator.data_saved then
 	if not mutator.reset1 then
 		mutator.data_saved = false
@@ -1207,6 +1209,38 @@ mutator.start = function()
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		Breeds.beastmen_standard_bearer.diff_stagger_resist[i] = 25
+	end
+	
+	--Modified Dutch Spice Enemies
+	if dutch_spice_present then
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.beastmen_gor_dummy.diff_stagger_resist[i] = 28
+		end
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.beastmen_bestigor_dummy.diff_stagger_resist[i] = 50
+		end
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.chaos_raider_tutorial.diff_stagger_resist[i] = 50
+		end
+				for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.chaos_marauder_tutorial.diff_stagger_resist[i] = 22
+		end
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.skaven_dummy_clan_rat.diff_stagger_resist[i] = 28
+		end
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.skaven_dummy_slave.diff_stagger_resist[i] = 40
+		end
+		for i=1, difficulties do
+			local i = i + difficulty_start
+			Breeds.skaven_clan_rat_tutorial.diff_stagger_resist[i] = 35
+		end
 	end
 
 	--Reduced stagger_damage_multiplier
