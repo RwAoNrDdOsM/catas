@@ -3,7 +3,7 @@ local mod = get_mod("catas")
 -- Fix Throw Poision Globe
 BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[8] = 10
 
--- Display cata displayy images for cata 2 & 3
+-- Display cata display images for cata 2 & 3
 DifficultySettings.cataclysm_2.display_image = "difficulty_option_6"
 DifficultySettings.cataclysm_3.display_image = "difficulty_option_6"
 
@@ -75,6 +75,152 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 
 	return func(self, file_name, data, callback, force_local_save)
 end)
+
+-- Prevents Crash in Cata 2/3 for Chaos Bulwark
+mod.custom_stagger_types = {
+	explosion = 6,
+	heavy = 3,
+	medium = 2,
+	none = 0,
+	pulling = 9,
+	ranged_medium = 5,
+	ranged_weak = 4,
+	shield_block_stagger = 10,
+	shield_open_stagger = 11,
+	weak = 1,
+	weakspot = 8,
+}
+
+mod.difficulty_tweak_index = {
+	{
+		shield_block_threshold = 2,
+		shield_open_stagger_threshold = 6,
+		stagger_regen_rate = {
+			1,
+			0.1,
+		},
+	},
+	{
+		shield_block_threshold = 2,
+		shield_open_stagger_threshold = 8,
+		stagger_regen_rate = {
+			1,
+			0.1,
+		},
+	},
+	{
+		shield_block_threshold = 2,
+		shield_open_stagger_threshold = 10,
+		stagger_regen_rate = {
+			1.5,
+			0.5,
+		},
+	},
+	{
+		shield_block_threshold = 3,
+		shield_open_stagger_threshold = 10,
+		stagger_regen_rate = {
+			1.5,
+			0.5,
+		},
+	},
+	{
+		shield_block_threshold = 3,
+		shield_open_stagger_threshold = 12,
+		stagger_regen_rate = {
+			2,
+			1,
+		},
+	},
+	{
+		shield_block_threshold = 4,
+		shield_open_stagger_threshold = 12,
+		stagger_regen_rate = {
+			2,
+			1,
+		},
+	},
+	{
+		shield_block_threshold = 4,
+		shield_open_stagger_threshold = 12,
+		stagger_regen_rate = {
+			2,
+			1,
+		},
+	},
+	{
+		shield_block_threshold = 4,
+		shield_open_stagger_threshold = 12,
+		stagger_regen_rate = {
+			2,
+			1,
+		},
+	},
+}
+
+Breeds.chaos_bulwark.before_stagger_enter_function = function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
+	local ai_shield_extension = ScriptUnit.extension(unit, "ai_shield_system")
+	local t = Managers.time:time("game")
+	local breed = blackboard.breed
+	local stagger_modifier = breed.stagger_modifiers[blackboard.latest_hit_charge_value] or breed.stagger_modifiers.default
+
+	blackboard.stagger_level = blackboard.stagger_level or mod.custom_stagger_types.none
+
+	local difficulty_manager = Managers.state.difficulty
+	local difficulty_rank = difficulty_manager:get_difficulty_rank()
+
+	local difficulty_tweaks = mod.difficulty_tweak_index[difficulty_rank]
+	local shield_open_stagger_threshold = difficulty_tweaks.shield_open_stagger_threshold
+	local shield_block_threshold = difficulty_tweaks.shield_block_threshold
+	local stagger_regen_rate = difficulty_tweaks.stagger_regen_rate
+	local weakspot_stagger
+
+	if blackboard.weakspot_hit and not blackboard.weakspot_exploded and not ai_shield_extension.is_blocking then
+		weakspot_stagger = true
+		blackboard.weakspot_exploded = true
+	end
+
+	predicted_damage = predicted_damage or 0.1
+
+	local normalizing_value = {
+		0,
+		10,
+	}
+	local normalized_predicted_damage = (predicted_damage - normalizing_value[1]) / (normalizing_value[2] - normalizing_value[1])
+	local final_stagger_to_add = (stagger_value_to_add + normalized_predicted_damage) * stagger_modifier
+	local regen_rate = math.lerp(stagger_regen_rate[1], stagger_regen_rate[2], (blackboard.cached_stagger or 0.1) / shield_open_stagger_threshold)
+	local regen = math.clamp(t - (blackboard.shield_regen_time_stamp or t), 0, math.huge) * regen_rate
+
+	blackboard.stagger = math.clamp((blackboard.cached_stagger or 0) - regen, 0, math.huge) + final_stagger_to_add
+	blackboard.shield_regen_time_stamp = t
+
+	local shield_block_stagger_activated = shield_block_threshold <= final_stagger_to_add
+	local shield_open_stagger_reached = shield_open_stagger_threshold <= blackboard.stagger
+
+	blackboard.override_stagger = blackboard.max_stagger_reached and not weakspot_stagger
+
+	if blackboard.stagger_level == mod.custom_stagger_types.shield_open_stagger or weakspot_stagger then
+		blackboard.stagger_level = mod.custom_stagger_types.heavy
+	elseif shield_open_stagger_reached then
+		blackboard.stagger_level = mod.custom_stagger_types.shield_open_stagger
+	elseif shield_block_stagger_activated then
+		blackboard.stagger_level = mod.custom_stagger_types.shield_block_stagger
+	else
+		blackboard.override_stagger = true
+	end
+
+	if blackboard.override_stagger then
+		blackboard.staggering_id = blackboard.stagger
+	else
+		blackboard.stagger_activated = true
+	end
+
+	blackboard.cached_stagger = blackboard.stagger
+
+	if not blackboard.max_stagger_reached and blackboard.stagger_level ~= mod.custom_stagger_types.heavy then
+		ai_shield_extension:play_shield_hit_sfx(blackboard.stagger_level == mod.custom_stagger_types.shield_open_stagger, blackboard.cached_stagger, breed.shield_open_stagger_threshold)
+	end
+end
 
 -- Cata 2&3 option
 DefaultDifficulties = {
@@ -1071,141 +1217,46 @@ end
 --below mutator code lifted from Grimalackt's Deathwish Mod
 
 mutator.start = function()
-	--Skaven
 	--Below is the values for each taken by what the VT2 Endgame Community thinks works best.
-	--diff_stagger_resist.skaven_slave 15
-	--diff_stagger_resist.skaven_clan_rat 18.5
-	--diff_stagger_resist.skaven_storm_vermin 35
-	--diff_stagger_resist.skaven_storm_vermin_commander  35
-	--diff_stagger_resist.skaven_plague_monk 35
-	--diff_stagger_resist.skaven_pack_master 45
-	--diff_stagger_resist.skaven_ratling_gunner 27
-	--diff_stagger_resist.skaven_warpfire_thrower 27
-	--diff_stagger_resist.skaven_storm_vermin_warlord 50
-	for i=1, difficulties do 
+	--Skaven
+	for i=1, difficulties do
 		local i = i + difficulty_start
 		Breeds.skaven_slave.diff_stagger_resist[i] = 15
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_clan_rat.diff_stagger_resist[i] = 18.5
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_clan_rat_with_shield.diff_stagger_resist[i] = 18.5
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin.diff_stagger_resist[i] = 35
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_with_shield.diff_stagger_resist[i] = 35
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_commander.diff_stagger_resist[i] = 35
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_plague_monk.diff_stagger_resist[i] = 35
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
-		Breeds.skaven_pack_master.diff_stagger_resist[i] = 45
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_pack_master.diff_stagger_resist[i] = 27
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_ratling_gunner.diff_stagger_resist[i] = 27
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_warpfire_thrower.diff_stagger_resist[i] = 27
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_warlord.diff_stagger_resist[i] = 50
 	end
 	--Chaos
-	--diff_stagger_resist.chaos_fanatic 20
-	--diff_stagger_resist.chaos_marauder 28
-	--diff_stagger_resist.chaos_raider 33
-	--diff_stagger_resist.chaos_berzerker 35
-	--diff_stagger_resist.chaos_warrior 45
-	--diff_stagger_resist.chaos_sorcerers 30
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		Breeds.chaos_fanatic.diff_stagger_resist[i] = 20
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_marauder.diff_stagger_resist[i] = 28
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_marauder_with_shield.diff_stagger_resist[i] = 28
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_raider.diff_stagger_resist[i] = 33
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_berzerker.diff_stagger_resist[i] = 35
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_warrior.diff_stagger_resist[i] = 45
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
+		--Breeds.chaos_bulwark.diff_stagger_resist[i] = 45
+		Breeds.chaos_bulwark.diff_stagger_resist[i] = mod:get("diff_stagger_resist.chaos_bulwark")
 		Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i] = 30
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i] = 30
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = 30
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_plague_sorcerer.diff_stagger_resist[i] = 30
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i] = 30
 	end
-
-	--Beastmen
-	--diff_stagger_resist.beastmen_ungor 12
-	--diff_stagger_resist.beastmen_ungor_archer 12
-	--diff_stagger_resist.beastmen_gor 19.5
-	--diff_stagger_resist.beastmen_bestigor 40
-	--diff_stagger_resist.beastmen_standard_bearer 25
-	for i=1, difficulties do 
+	-- Beastmen
+	for i=1, difficulties do
 		local i = i + difficulty_start
 		Breeds.beastmen_ungor.diff_stagger_resist[i] = 12
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_ungor_archer.diff_stagger_resist[i] = 12
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_gor.diff_stagger_resist[i] = 19.5
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_bestigor.diff_stagger_resist[i] = 40
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_standard_bearer.diff_stagger_resist[i] = 25
 	end
 
@@ -1214,150 +1265,59 @@ mutator.start = function()
 	DifficultySettings.cataclysm_3.stagger_damage_multiplier = 0.2
 
 	--Globadier increased values
-	--skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage 15
-	--skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage 22.5
-	--skaven_poison_wind_globadier.suicide_run.aoe_init_damage 60
-	--skaven_poison_wind_globadier.suicide_run.aoe_dot_damage 15
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[i] = 15
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage[i] = 22.5
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_init_damage[i] = 60
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_dot_damage[i] = 15
 	end
-
 	mutator.active = true
 end
 
 mutator.stop = function()
 	--Skaven
-	for i=1, difficulties do 
+	for i=1, difficulties do
 		local i = i + difficulty_start
 		Breeds.skaven_slave.diff_stagger_resist[i] = mutator.Breeds.skaven_slave.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_clan_rat.diff_stagger_resist[i] = mutator.Breeds.skaven_clan_rat.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_clan_rat_with_shield.diff_stagger_resist[i] = mutator.Breeds.skaven_clan_rat_with_shield.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin.diff_stagger_resist[i] = mutator.Breeds.skaven_storm_vermin.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_with_shield.diff_stagger_resist[i] = mutator.Breeds.skaven_storm_vermin_with_shield.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_commander.diff_stagger_resist[i] = mutator.Breeds.skaven_storm_vermin_commander.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
-		Breeds.skaven_plague_monk.diff_stagger_resist[i] = mutator.Breeds.skaven_plague_monk.diff_stagger_resist[i] 
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
+		Breeds.skaven_plague_monk.diff_stagger_resist[i] = mutator.Breeds.skaven_plague_monk.diff_stagger_resist[i]
 		Breeds.skaven_pack_master.diff_stagger_resist[i] = mutator.Breeds.skaven_pack_master.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_pack_master.diff_stagger_resist[i] = mutator.Breeds.skaven_pack_master.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_ratling_gunner.diff_stagger_resist[i] = mutator.Breeds.skaven_ratling_gunner.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_warpfire_thrower.diff_stagger_resist[i] = mutator.Breeds.skaven_warpfire_thrower.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.skaven_storm_vermin_warlord.diff_stagger_resist[i] = mutator.Breeds.skaven_storm_vermin_warlord.diff_stagger_resist[i]
 	end
-
 	--Chaos
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		Breeds.chaos_fanatic.diff_stagger_resist[i] = mutator.Breeds.chaos_fanatic.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_marauder.diff_stagger_resist[i] = mutator.Breeds.chaos_marauder.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_marauder_with_shield.diff_stagger_resist[i] = mutator.Breeds.chaos_marauder_with_shield.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_raider.diff_stagger_resist[i] = mutator.Breeds.chaos_raider.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_berzerker.diff_stagger_resist[i] = mutator.Breeds.chaos_berzerker.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_warrior.diff_stagger_resist[i] = mutator.Breeds.chaos_warrior.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
+		Breeds.chaos_bulwark.diff_stagger_resist[i] = mutator.Breeds.chaos_bulwark.diff_stagger_resist[i]
 		Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = mutator.Breeds.curse_mutator_sorcerer.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_plague_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_plague_sorcerer.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i]
 	end
-
 	--Beastmen
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		Breeds.beastmen_ungor.diff_stagger_resist[i] = mutator.Breeds.beastmen_ungor.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_ungor_archer.diff_stagger_resist[i] = mutator.Breeds.beastmen_ungor_archer.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_gor.diff_stagger_resist[i] = mutator.Breeds.beastmen_gor.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_bestigor.diff_stagger_resist[i] = mutator.Breeds.beastmen_bestigor.diff_stagger_resist[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		Breeds.beastmen_standard_bearer.diff_stagger_resist[i] = mutator.Breeds.beastmen_standard_bearer.diff_stagger_resist[i]
 	end
-
-	--stagger_damage_multiplier
+	-- Stagger_damage_multiplier
 	DifficultySettings.cataclysm_2.stagger_damage_multiplier = mutator.DifficultySettings.cataclysm_2.stagger_damage_multiplier
 	DifficultySettings.cataclysm_3.stagger_damage_multiplier = mutator.DifficultySettings.cataclysm_3.stagger_damage_multiplier
 
@@ -1365,17 +1325,8 @@ mutator.stop = function()
 	for i=1, difficulties do 
 		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage[i] = mutator.BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_dot_damage[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[i] = mutator.BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_dot_damage[i] = mutator.BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_dot_damage[i]
-	end
-	for i=1, difficulties do 
-		local i = i + difficulty_start
 		BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_init_damage[i] = mutator.BreedActions.skaven_poison_wind_globadier.suicide_run.aoe_init_damage[i]
 	end
 
@@ -1419,6 +1370,22 @@ mutator.toggle = function()
     end
 end
 
+mutator.toggle_nomatch = function()
+	if Managers.player.is_server and Managers.state.game_mode._game_mode_key == "inn_deus" then
+        mod:network_send("rpc_activate_catas", "all", not mutator.active)
+    elseif Managers.player.is_server and Managers.state.game_mode._game_mode_key == "inn" then
+        if not mutator.active then
+            mutator.start()
+            mod:chat_broadcast("Deathwish ENABLED.")
+        else
+            mutator.stop()
+            mod:chat_broadcast("Deathwish DISABLED.")
+        end
+    else
+        mod:echo("You must be the host and in Taal's Horn Keep or the Pilgrimage Chamber to do that")
+    end
+end
+
 mod.on_user_joined = function(player)
     if mutator.active and ((Managers.state.game_mode._game_mode_key == "inn_deus") or (Managers.state.game_mode._game_mode_key == "deus") or (Managers.state.game_mode._game_mode_key == "map_deus")) then
         mod:network_send("rpc_activate_catas", player.peer_id, mutator.active)
@@ -1430,151 +1397,51 @@ mod:command("deathwish", "Toggle Deathwish. Must be host and in the Taal's Horn 
 --Easy way to change stuff when settings change
 --Table that contains functions, strings or tables to do things when options are changed
 local widget_settings = {
-	burby = function()
-		local setting = mod:get("burby") 
-		if setting == "default" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_init_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_init_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_dot_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_dot_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_init_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_init_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_dot_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_dot_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_init_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_init_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_dot_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_dot_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_init_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_init_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_dot_damage[i] = mutator.BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_dot_damage[i]
-			end
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm = mutator.burby_buff.difficulty_damage.cataclysm
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_2 = mutator.burby_buff.difficulty_damage.cataclysm_2
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_3 = mutator.burby_buff.difficulty_damage.cataclysm_3
-		elseif setting == "legend" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_init_damage[i] = 10
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_dot_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_init_damage[i] = 10
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_dot_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_init_damage[i] = 10
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_dot_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_init_damage[i] = 10
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_dot_damage[i] = 15
-			end
-			local legend = BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.hardest or {1,1,0,6,1}
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm = legend
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_2 = legend
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_3 = legend
-		elseif setting == "legend+" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_init_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_missile.aoe_dot_damage[i] = 20
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_init_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.cast_seeking_bomb_missile.aoe_dot_damage[i] = 20
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_init_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_magic_missile.aoe_dot_damage[i] = 20
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_init_damage[i] = 15
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.chaos_exalted_sorcerer.defensive_seeking_bomb.aoe_dot_damage[i] = 20
-			end
-			local legend = {1,1,0,8,1}
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm = legend
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_2 = legend
-			BuffTemplates.plague_wave_face_base.buffs[1].difficulty_damage.cataclysm_3 = legend
+	["diff_stagger_resist.chaos_bulwark"] = function()
+		for i=1, difficulties do 
+			local i = i + difficulty_start
+			Breeds.chaos_bulwark.diff_stagger_resist[i] = mod:get("diff_stagger_resist.chaos_bulwark")
 		end
-	end,
-	seer = function()
-		local setting = mod:get("seer") 
-		if setting == "default" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_init_damage[i] = mutator.BreedActions.skaven_grey_seer.cast_missile.aoe_init_damage[i]
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_dot_damage[i] = mutator.BreedActions.skaven_grey_seer.cast_missile.aoe_dot_damage[i]
-			end
-		elseif setting == "legend" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_init_damage[i] = {7,1,0}
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_dot_damage[i] = {10,0,0}
-			end
-		elseif setting == "legend+" then
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_init_damage[i] = {10,1,0}
-			end
-			for i=1, 3 do 
-				local i = i + 5
-				BreedActions.skaven_grey_seer.cast_missile.aoe_dot_damage[i] = {15,0,0}
-			end
+	end,--]]
+	shield_block_threshold = function()
+		for i=1, difficulties do 
+			local i = i + difficulty_start
+			mod.difficulty_tweak_index[i].shield_block_threshold = mod:get("shield_block_threshold")
 		end
-	end,
+	end,--]]
+	shield_open_stagger_threshold = function()
+		for i=1, difficulties do 
+			local i = i + difficulty_start
+			mod.difficulty_tweak_index[i].shield_open_stagger_threshold = mod:get("shield_open_stagger_threshold")
+		end
+	end,--]]
+	stagger_regen_rate_1 = function()
+		for i=1, difficulties do 
+			local i = i + difficulty_start
+			mod.difficulty_tweak_index[i].stagger_regen_rate = {
+				mod:get("stagger_regen_rate_1"),
+				mod:get("stagger_regen_rate_2")
+			}
+		end
+	end,--]]
+	stagger_regen_rate_2 = function()
+		for i=1, difficulties do 
+			local i = i + difficulty_start
+			mod.difficulty_tweak_index[i].stagger_regen_rate = {
+				mod:get("stagger_regen_rate_1"),
+				mod:get("stagger_regen_rate_2")
+			}
+		end
+	end,--]]
+	heavy = function()
+			mod.custom_stagger_types.heavy = mod:get("heavy")
+	end,--]]
+	shield_block_stagger = function()
+		mod.custom_stagger_types.shield_block_stagger = mod:get("shield_block_stagger")
+	end,--]]
+	shield_open_stagger = function()
+		mod.custom_stagger_types.shield_open_stagger = mod:get("shield_open_stagger")
+	end,--]]
 	deathwish = function ()
 		mutator.toggle()
 	end
@@ -1613,7 +1480,19 @@ mod.on_setting_changed = function(setting_id)
 end 
 
 -- Set predetermined values when mod loads
-local widget_setting_1 = widget_settings["burby"]
-type_widget_setting(widget_setting_1, setting_id)
-local widget_setting_2 = widget_settings["seer"]
-type_widget_setting(widget_setting_2, setting_id)
+local widget_setting = widget_settings["diff_stagger_resist.chaos_bulwark"]
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.shield_block_threshold
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.shield_open_stagger_threshold
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.stagger_regen_rate_1
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.stagger_regen_rate_2
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.heavy
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.shield_block_stagger
+type_widget_setting(widget_setting, setting_id)
+local widget_setting = widget_settings.shield_open_stagger
+type_widget_setting(widget_setting, setting_id)
