@@ -76,7 +76,7 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 	return func(self, file_name, data, callback, force_local_save)
 end)
 
--- Prevents Crash in Cata 2/3 for Chaos Bulwark
+-- Custom Options for Chaos Bulwark
 mod.custom_stagger_types = {
 	explosion = 6,
 	heavy = 3,
@@ -91,74 +91,7 @@ mod.custom_stagger_types = {
 	weakspot = 8,
 }
 
-mod.difficulty_tweak_index = {
-	{
-		shield_block_threshold = 2,
-		shield_open_stagger_threshold = 6,
-		stagger_regen_rate = {
-			1,
-			0.1,
-		},
-	},
-	{
-		shield_block_threshold = 2,
-		shield_open_stagger_threshold = 8,
-		stagger_regen_rate = {
-			1,
-			0.1,
-		},
-	},
-	{
-		shield_block_threshold = 2,
-		shield_open_stagger_threshold = 10,
-		stagger_regen_rate = {
-			1.5,
-			0.5,
-		},
-	},
-	{
-		shield_block_threshold = 3,
-		shield_open_stagger_threshold = 10,
-		stagger_regen_rate = {
-			1.5,
-			0.5,
-		},
-	},
-	{
-		shield_block_threshold = 3,
-		shield_open_stagger_threshold = 12,
-		stagger_regen_rate = {
-			2,
-			1,
-		},
-	},
-	{
-		shield_block_threshold = 4,
-		shield_open_stagger_threshold = 12,
-		stagger_regen_rate = {
-			2,
-			1,
-		},
-	},
-	{
-		shield_block_threshold = 4,
-		shield_open_stagger_threshold = 12,
-		stagger_regen_rate = {
-			2,
-			1,
-		},
-	},
-	{
-		shield_block_threshold = 4,
-		shield_open_stagger_threshold = 12,
-		stagger_regen_rate = {
-			2,
-			1,
-		},
-	},
-}
-
-Breeds.chaos_bulwark.before_stagger_enter_function = function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
+mod:hook_origin("Breeds", "chaos_bulwark.before_stagger_enter_function", function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
 	local ai_shield_extension = ScriptUnit.extension(unit, "ai_shield_system")
 	local t = Managers.time:time("game")
 	local breed = blackboard.breed
@@ -168,8 +101,7 @@ Breeds.chaos_bulwark.before_stagger_enter_function = function (unit, blackboard,
 
 	local difficulty_manager = Managers.state.difficulty
 	local difficulty_rank = difficulty_manager:get_difficulty_rank()
-
-	local difficulty_tweaks = mod.difficulty_tweak_index[difficulty_rank]
+	local difficulty_tweaks = breed.stagger_difficulty_tweak_index[difficulty_rank]
 	local shield_open_stagger_threshold = difficulty_tweaks.shield_open_stagger_threshold
 	local shield_block_threshold = difficulty_tweaks.shield_block_threshold
 	local stagger_regen_rate = difficulty_tweaks.stagger_regen_rate
@@ -218,9 +150,9 @@ Breeds.chaos_bulwark.before_stagger_enter_function = function (unit, blackboard,
 	blackboard.cached_stagger = blackboard.stagger
 
 	if not blackboard.max_stagger_reached and blackboard.stagger_level ~= mod.custom_stagger_types.heavy then
-		ai_shield_extension:play_shield_hit_sfx(blackboard.stagger_level == mod.custom_stagger_types.shield_open_stagger, blackboard.cached_stagger, breed.shield_open_stagger_threshold)
+		ai_shield_extension:play_shield_hit_sfx(blackboard.stagger_level == mod.custom_stagger_types.shield_open_stagger, blackboard.cached_stagger, shield_open_stagger_threshold)
 	end
-end
+end)
 
 -- Cata 2&3 option
 DefaultDifficulties = {
@@ -1406,19 +1338,19 @@ local widget_settings = {
 	shield_block_threshold = function()
 		for i=1, difficulties do 
 			local i = i + difficulty_start
-			mod.difficulty_tweak_index[i].shield_block_threshold = mod:get("shield_block_threshold")
+			Breeds.chaos_bulwark.stagger_difficulty_tweak_index[i].shield_block_threshold = mod:get("shield_block_threshold")
 		end
 	end,--]]
 	shield_open_stagger_threshold = function()
 		for i=1, difficulties do 
 			local i = i + difficulty_start
-			mod.difficulty_tweak_index[i].shield_open_stagger_threshold = mod:get("shield_open_stagger_threshold")
+			Breeds.chaos_bulwark.stagger_difficulty_tweak_index[i].shield_open_stagger_threshold = mod:get("shield_open_stagger_threshold")
 		end
 	end,--]]
 	stagger_regen_rate_1 = function()
 		for i=1, difficulties do 
 			local i = i + difficulty_start
-			mod.difficulty_tweak_index[i].stagger_regen_rate = {
+			Breeds.chaos_bulwark.stagger_difficulty_tweak_index[i].stagger_regen_rate = {
 				mod:get("stagger_regen_rate_1"),
 				mod:get("stagger_regen_rate_2")
 			}
@@ -1427,14 +1359,14 @@ local widget_settings = {
 	stagger_regen_rate_2 = function()
 		for i=1, difficulties do 
 			local i = i + difficulty_start
-			mod.difficulty_tweak_index[i].stagger_regen_rate = {
+			Breeds.chaos_bulwark.stagger_difficulty_tweak_index[i].stagger_regen_rate = {
 				mod:get("stagger_regen_rate_1"),
 				mod:get("stagger_regen_rate_2")
 			}
 		end
 	end,--]]
 	heavy = function()
-			mod.custom_stagger_types.heavy = mod:get("heavy")
+		mod.custom_stagger_types.heavy = mod:get("heavy")
 	end,--]]
 	shield_block_stagger = function()
 		mod.custom_stagger_types.shield_block_stagger = mod:get("shield_block_stagger")
