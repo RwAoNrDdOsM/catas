@@ -43,7 +43,7 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 		if _mission_selection.custom ~= nil then
 			if _mission_selection.custom.difficulty_key == "cataclysm_2" or  _mission_selection.custom.difficulty_key == "cataclysm_3" then
 				_mission_selection.custom.difficulty_key = "cataclysm"
-				mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
+				mod:info("Changed custom mission selection difficulty key to cataclysm")
 			end
 		end
 		if _mission_selection.deus_custom ~= nil then
@@ -76,7 +76,7 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 	return func(self, file_name, data, callback, force_local_save)
 end)
 
--- Custom Options for Chaos Bulwark
+-- Custom stagger options for Chaos Bulwark
 mod.custom_stagger_types = {
 	explosion = 6,
 	heavy = 3,
@@ -91,7 +91,7 @@ mod.custom_stagger_types = {
 	weakspot = 8,
 }
 
-mod:hook_origin("Breeds", "chaos_bulwark.before_stagger_enter_function", function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
+Breeds.chaos_bulwark.before_stagger_enter_function = function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
 	local ai_shield_extension = ScriptUnit.extension(unit, "ai_shield_system")
 	local t = Managers.time:time("game")
 	local breed = blackboard.breed
@@ -152,7 +152,7 @@ mod:hook_origin("Breeds", "chaos_bulwark.before_stagger_enter_function", functio
 	if not blackboard.max_stagger_reached and blackboard.stagger_level ~= mod.custom_stagger_types.heavy then
 		ai_shield_extension:play_shield_hit_sfx(blackboard.stagger_level == mod.custom_stagger_types.shield_open_stagger, blackboard.cached_stagger, shield_open_stagger_threshold)
 	end
-end)
+end
 
 -- Cata 2&3 option
 DefaultDifficulties = {
