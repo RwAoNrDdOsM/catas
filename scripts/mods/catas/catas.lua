@@ -1,5 +1,9 @@
 local mod = get_mod("catas")
 
+-- Lets you pick Cata 2/3
+DifficultySettings.cataclysm_2.extra_requirement_name = nil
+DifficultySettings.cataclysm_3.extra_requirement_name = nil
+
 -- Fix Throw Poision Globe
 BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[8] = 10
 
