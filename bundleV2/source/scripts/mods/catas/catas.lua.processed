@@ -1,19 +1,11 @@
 local mod = get_mod("catas")
 
--- Lets you pick Cata 2/3
-DifficultySettings.cataclysm_2.extra_requirement_name = nil
-DifficultySettings.cataclysm_3.extra_requirement_name = nil
-
 -- Fix Throw Poision Globe
 BreedActions.skaven_poison_wind_globadier.throw_poison_globe.aoe_init_damage[8] = 10
 
--- Display cata display images for cata 2 & 3
+-- Display cata displayy images for cata 2 & 3
 DifficultySettings.cataclysm_2.display_image = "difficulty_option_6"
 DifficultySettings.cataclysm_3.display_image = "difficulty_option_6"
-
---Fix Chaos Troll
-BreedActions.chaos_troll_chief.downed.downed_duration = { 120, 120, 90, 75, 75, 75, 75, 75 }
-BuffTemplates.troll_chief_downed.buffs[1].time_between_heal = { 1,1,1,0.5,0.25, 0.25, 0.25, 0.25 }
 
 mod:hook(LevelUnlockUtils, "completed_level_difficulty_index", function (func, statistics_db, player_stats_id, level_key)
 	local difficulty_complete_index = func(statistics_db, player_stats_id, level_key)
@@ -51,7 +43,7 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 		if _mission_selection.custom ~= nil then
 			if _mission_selection.custom.difficulty_key == "cataclysm_2" or  _mission_selection.custom.difficulty_key == "cataclysm_3" then
 				_mission_selection.custom.difficulty_key = "cataclysm"
-				mod:info("Changed custom mission selection difficulty key to cataclysm")
+				mod:info("Changed deus_custom mission selection difficulty key to cataclysm")
 			end
 		end
 		if _mission_selection.deus_custom ~= nil then
@@ -83,6 +75,135 @@ mod:hook(SaveManager, "auto_save", function (func, self, file_name, data, callba
 
 	return func(self, file_name, data, callback, force_local_save)
 end)
+
+-- Prevents Crash in Cata 2/3 for Chaos Bulwark
+local custom_stagger_types = {
+	explosion = 6,
+	heavy = 3,
+	medium = 2,
+	none = 0,
+	pulling = 9,
+	ranged_medium = 5,
+	ranged_weak = 4,
+	shield_block_stagger = 10,
+	shield_open_stagger = 11,
+	weak = 1,
+	weakspot = 8,
+}
+Breeds.chaos_bulwark.before_stagger_enter_function =  function (unit, blackboard, attacker_unit, is_push, stagger_value_to_add, predicted_damage)
+	local ai_shield_extension = ScriptUnit.extension(unit, "ai_shield_system")
+	local t = Managers.time:time("game")
+	local breed = blackboard.breed
+	local stagger_modifier = breed.stagger_modifiers[blackboard.latest_hit_charge_value] or breed.stagger_modifiers.default
+
+	blackboard.stagger_level = blackboard.stagger_level or custom_stagger_types.none
+
+		local difficulty_manager = Managers.state.difficulty
+		local difficulty_rank = difficulty_manager:get_difficulty_rank()
+		local difficulty_tweak_index = {
+			{
+				shield_block_threshold = 2,
+				shield_open_stagger_threshold = 6,
+				stagger_regen_rate = {
+					1,
+					0.1,
+				},
+			},
+			{
+				shield_block_threshold = 2,
+				shield_open_stagger_threshold = 8,
+				stagger_regen_rate = {
+					1,
+					0.1,
+				},
+			},
+			{
+				shield_block_threshold = 2,
+				shield_open_stagger_threshold = 10,
+				stagger_regen_rate = {
+					1.5,
+					0.5,
+				},
+			},
+			{
+				shield_block_threshold = 3,
+				shield_open_stagger_threshold = 10,
+				stagger_regen_rate = {
+					1.5,
+					0.5,
+				},
+			},
+			{
+				shield_block_threshold = 3,
+				shield_open_stagger_threshold = 12,
+				stagger_regen_rate = {
+					2,
+					1,
+				},
+			},
+			{
+				shield_block_threshold = 4,
+				shield_open_stagger_threshold = 12,
+				stagger_regen_rate = {
+					2,
+					1,
+				},
+			},
+		}
+		if difficulty_rank > 5 then --Sets Cata 2/3 rank to Cata 1
+			difficulty_rank = 5
+		end
+		local difficulty_tweaks = difficulty_tweak_index[difficulty_rank]
+		local shield_open_stagger_threshold = difficulty_tweaks.shield_open_stagger_threshold
+		local shield_block_threshold = difficulty_tweaks.shield_block_threshold
+		local stagger_regen_rate = difficulty_tweaks.stagger_regen_rate
+		local weakspot_stagger
+
+		if blackboard.weakspot_hit and not blackboard.weakspot_exploded and not ai_shield_extension.is_blocking then
+			weakspot_stagger = true
+			blackboard.weakspot_exploded = true
+		end
+
+		predicted_damage = predicted_damage or 0.1
+
+		local normalizing_value = {
+			0,
+			10,
+		}
+		local normalized_predicted_damage = (predicted_damage - normalizing_value[1]) / (normalizing_value[2] - normalizing_value[1])
+		local final_stagger_to_add = (stagger_value_to_add + normalized_predicted_damage) * stagger_modifier
+		local regen_rate = math.lerp(stagger_regen_rate[1], stagger_regen_rate[2], (blackboard.cached_stagger or 0.1) / shield_open_stagger_threshold)
+		local regen = math.clamp(t - (blackboard.shield_regen_time_stamp or t), 0, math.huge) * regen_rate
+
+		blackboard.stagger = math.clamp((blackboard.cached_stagger or 0) - regen, 0, math.huge) + final_stagger_to_add
+		blackboard.shield_regen_time_stamp = t
+
+		local shield_block_stagger_activated = shield_block_threshold <= final_stagger_to_add
+		local shield_open_stagger_reached = shield_open_stagger_threshold <= blackboard.stagger
+
+		blackboard.override_stagger = blackboard.max_stagger_reached and not weakspot_stagger
+
+		if blackboard.stagger_level == custom_stagger_types.shield_open_stagger or weakspot_stagger then
+			blackboard.stagger_level = custom_stagger_types.heavy
+		elseif shield_open_stagger_reached then
+			blackboard.stagger_level = custom_stagger_types.shield_open_stagger
+		elseif shield_block_stagger_activated then
+			blackboard.stagger_level = custom_stagger_types.shield_block_stagger
+		else
+			blackboard.override_stagger = true
+		end
+
+		if blackboard.override_stagger then
+			blackboard.staggering_id = blackboard.stagger
+		else
+			blackboard.stagger_activated = true
+		end
+
+		blackboard.cached_stagger = blackboard.stagger
+
+		if not blackboard.max_stagger_reached and blackboard.stagger_level ~= custom_stagger_types.heavy then
+			ai_shield_extension:play_shield_hit_sfx(blackboard.stagger_level == custom_stagger_types.shield_open_stagger, blackboard.cached_stagger, breed.shield_open_stagger_threshold)
+		end	
 
 -- Cata 2&3 option
 DefaultDifficulties = {
@@ -1104,9 +1225,12 @@ mutator.start = function()
 		Breeds.chaos_raider.diff_stagger_resist[i] = 33
 		Breeds.chaos_berzerker.diff_stagger_resist[i] = 35
 		Breeds.chaos_warrior.diff_stagger_resist[i] = 45
+		--Breeds.chaos_bulwark.diff_stagger_resist[i] = 45
+		Breeds.chaos_bulwark.diff_stagger_resist[i] = mod:get("diff_stagger_resist.chaos_bulwark")
 		Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i] = 30
 		Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i] = 30
 		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = 30
+		Breeds.chaos_plague_sorcerer.diff_stagger_resist[i] = 30
 		Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i] = 30
 	end
 	-- Beastmen
@@ -1160,9 +1284,11 @@ mutator.stop = function()
 		Breeds.chaos_raider.diff_stagger_resist[i] = mutator.Breeds.chaos_raider.diff_stagger_resist[i]
 		Breeds.chaos_berzerker.diff_stagger_resist[i] = mutator.Breeds.chaos_berzerker.diff_stagger_resist[i]
 		Breeds.chaos_warrior.diff_stagger_resist[i] = mutator.Breeds.chaos_warrior.diff_stagger_resist[i]
+		Breeds.chaos_bulwark.diff_stagger_resist[i] = mutator.Breeds.chaos_bulwark.diff_stagger_resist[i]
 		Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_corruptor_sorcerer.diff_stagger_resist[i]
 		Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_mutator_sorcerer.diff_stagger_resist[i]
 		Breeds.curse_mutator_sorcerer.diff_stagger_resist[i] = mutator.Breeds.curse_mutator_sorcerer.diff_stagger_resist[i]
+		Breeds.chaos_plague_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_plague_sorcerer.diff_stagger_resist[i]
 		Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i] = mutator.Breeds.chaos_vortex_sorcerer.diff_stagger_resist[i]
 	end
 	--Beastmen
@@ -1254,14 +1380,18 @@ mod:command("deathwish", "Toggle Deathwish. Must be host and in the Taal's Horn 
 --Easy way to change stuff when settings change
 --Table that contains functions, strings or tables to do things when options are changed
 local widget_settings = {
-	--[[["diff_stagger_resist.chaos_bulwark"] = function()
-		if mod:get("diff_stagger_resist.chaos_bulwark") then
-			for i=1, difficulties do 
-				local i = i + difficulty_start
-				Breeds.chaos_bulwark.diff_stagger_resist[i] = 45
-			end
-		end
+	["diff_stagger_resist.chaos_bulwark"] = function()
+		Breeds.chaos_bulwark.diff_stagger_resist[4] = mod:get("diff_stagger_resist.chaos_bulwark")
+		Breeds.chaos_bulwark.diff_stagger_resist[5] = mod:get("diff_stagger_resist.chaos_bulwark")
+		Breeds.chaos_bulwark.diff_stagger_resist[6] = mod:get("diff_stagger_resist.chaos_bulwark")
+		Breeds.chaos_bulwark.diff_stagger_resist[7] = mod:get("diff_stagger_resist.chaos_bulwark")
+		Breeds.chaos_bulwark.diff_stagger_resist[8] = mod:get("diff_stagger_resist.chaos_bulwark")
+		mod:echo(mod:get("diff_stagger_resist.chaos_bulwark"))
+		mod:echo(Breeds.chaos_bulwark.diff_stagger_resist[4])
 	end,--]]
+	deathwish = function ()
+		mutator.toggle()
+	end
 }
 
 --function to make the widget_settings table do stuff
@@ -1296,6 +1426,6 @@ mod.on_setting_changed = function(setting_id)
 	end
 end 
 
---[[ Set predetermined values when mod loads
-local widget_setting = widget_settings["diff_stagger_resist.chaos_bulwark"]
-type_widget_setting(widget_setting, setting_id)--]]
+-- Set predetermined values when mod loads
+local widget_setting_1 = widget_settings["diff_stagger_resist.chaos_bulwark"]
+type_widget_setting(widget_setting_1, setting_id)
